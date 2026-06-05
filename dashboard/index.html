@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>黄董的β指标</title>
+<style>
+  :root {
+    --bg: #f0f4f8;
+    --card: #ffffff;
+    --card-border: #e2e8f0;
+    --text: #2d3748;
+    --text-dim: #a0aec0;
+    --text-sub: #718096;
+    --green: #2f855a;
+    --red: #e53e3e;
+    --yellow: #d69e2e;
+    --blue: #3182ce;
+    --accent: #4a5568;
+    --danger-bg: #fff5f5;
+    --danger-border: #fc8181;
+    --warn-bg: #fffff0;
+    --warn-border: #f6e05e;
+    --ok-bg: #f0fff4;
+    --ok-border: #68d391;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    padding: 12px;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+  .header {
+    text-align: center;
+    padding: 18px 0 14px;
+    margin-bottom: 14px;
+  }
+  .header .brand {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  .header .brand span { color: #3b82f6; }
+  .header .sub { font-size: 12px; color: var(--text-sub); margin-top: 3px; }
+  .header .date { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+  .card {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--card-border);
+  }
+  .card-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .card-badge {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 10px;
+    background: #edf2f7;
+    color: var(--text-sub);
+    font-weight: 500;
+  }
+
+  /* Market State */
+  .market-red { background: var(--danger-bg); border: 1.5px solid var(--danger-border); }
+  .market-yellow { background: var(--warn-bg); border: 1.5px solid var(--warn-border); }
+  .market-green { background: var(--ok-bg); border: 1.5px solid var(--ok-border); }
+  .market-state {
+    text-align: center;
+    padding: 20px 16px;
+  }
+  .market-state .icon { font-size: 36px; margin-bottom: 4px; }
+  .market-state .label { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .market-state .detail { font-size: 13px; color: var(--text-sub); }
+  .market-state .detail span { font-weight: 600; color: var(--text); }
+  .market-warn {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(229,62,62,0.08);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--red);
+    text-align: center;
+    font-weight: 500;
+  }
+
+  /* Stock Card */
+  .stock-card { position: relative; }
+  .stock-code { font-size: 11px; color: var(--text-dim); }
+  .stock-name { font-size: 20px; font-weight: 700; margin: 4px 0; color: var(--text); }
+  .stock-strategy {
+    font-size: 11px;
+    color: #3b82f6;
+    background: #eff6ff;
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+  .stock-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .metric {
+    text-align: center;
+    padding: 10px 4px;
+    background: #f7fafc;
+    border-radius: 10px;
+  }
+  .metric .val { font-size: 18px; font-weight: 700; }
+  .metric .lbl { font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+  .price-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--card-border);
+  }
+  .price-row .price { font-size: 26px; font-weight: 800; }
+  .price-row .stop { font-size: 12px; color: var(--red); font-weight: 500; }
+
+  /* Barry Card */
+  .barry-invalid { opacity: 0.55; }
+  .barry-invalid .stock-name { text-decoration: line-through; }
+  .invalid-tag {
+    font-size: 11px;
+    color: var(--red);
+    background: #fff5f5;
+    padding: 3px 10px;
+    border-radius: 8px;
+    font-weight: 500;
+  }
+
+  /* Signal Strength */
+  .strength-bar {
+    height: 6px;
+    background: #edf2f7;
+    border-radius: 3px;
+    margin: 12px 0;
+    overflow: hidden;
+  }
+  .strength-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s;
+  }
+  .strength-fill.strong { background: linear-gradient(90deg, var(--green), #3b82f6); }
+  .strength-fill.medium { background: linear-gradient(90deg, var(--yellow), var(--blue)); }
+  .strength-fill.weak { background: linear-gradient(90deg, var(--red), var(--yellow)); }
+  .strength-factors {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .factor {
+    font-size: 11px;
+    padding: 7px 10px;
+    background: #f7fafc;
+    border-radius: 8px;
+    color: var(--text);
+  }
+  .factor .score { float: right; font-weight: 600; color: var(--accent); }
+
+  /* News Filter */
+  .news-summary {
+    display: flex;
+    gap: 10px;
+    text-align: center;
+  }
+  .news-stat {
+    flex: 1;
+    padding: 10px 6px;
+    border-radius: 10px;
+    background: #f7fafc;
+  }
+  .news-stat .num { font-size: 20px; font-weight: 700; }
+  .news-stat .lbl { font-size: 10px; color: var(--text-dim); }
+  .filtered-item {
+    padding: 8px 12px;
+    margin-top: 8px;
+    border-radius: 8px;
+    font-size: 12px;
+    background: #fff5f5;
+    border-left: 3px solid var(--red);
+  }
+  .filtered-item .reasons { color: var(--red); font-size: 11px; margin-top: 3px; }
+
+  /* Trade Log */
+  .trade-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+  .trade-table th {
+    text-align: left;
+    padding: 8px 6px;
+    color: var(--text-dim);
+    font-weight: 500;
+    border-bottom: 1.5px solid var(--card-border);
+    font-size: 10px;
+  }
+  .trade-table td {
+    padding: 10px 6px;
+    border-bottom: 1px solid #f7fafc;
+  }
+  .trade-up { color: var(--red); font-weight: 600; }
+  .trade-down { color: var(--green); font-weight: 600; }
+  .trade-status {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+  .status-pending { background: #fffff0; color: #b7791f; }
+  .status-win { background: #fff5f5; color: var(--red); }
+  .status-loss { background: #f0fff4; color: var(--green); }
+
+  /* Summary Stats */
+  .stats-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .stat-card {
+    flex: 1;
+    text-align: center;
+    padding: 12px 6px;
+    background: #f7fafc;
+    border-radius: 10px;
+  }
+  .stat-card .val { font-size: 18px; font-weight: 700; }
+  .stat-card .lbl { font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+
+  .disclaimer {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 16px 0;
+  }
+
+  .loading { text-align: center; padding: 40px; color: var(--text-dim); }
+  .error { text-align: center; padding: 40px; color: var(--red); }
+
+  .refresh-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .refresh-btn:active { opacity: 0.8; }
+  .last-update { text-align: center; font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+
+  /* Password Gate */
+  .pw-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+  }
+  .pw-overlay .pw-brand { font-size: 28px; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
+  .pw-overlay .pw-brand span { color: #3b82f6; }
+  .pw-overlay .pw-sub { font-size: 13px; color: var(--text-dim); margin-bottom: 32px; }
+  .pw-input {
+    width: 100%; max-width: 280px;
+    padding: 14px 18px;
+    font-size: 16px;
+    border: 2px solid var(--card-border);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--text);
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .pw-input:focus { border-color: #3b82f6; }
+  .pw-error { color: var(--red); font-size: 13px; margin-top: 10px; display: none; }
+  .pw-hint { color: var(--text-dim); font-size: 11px; margin-top: 20px; }
+</style>
+</head>
+<body>
+
+<!-- Password Gate -->
+<div class="pw-overlay" id="pwGate">
+  <div class="pw-brand">黄董的<span>β</span>指标</div>
+  <div class="pw-sub">请输入访问密码</div>
+  <input type="password" class="pw-input" id="pwInput" placeholder="密码" autofocus>
+  <div class="pw-error" id="pwError">密码错误，请重试</div>
+  <div class="pw-hint">私人看板 · 请勿外传</div>
+</div>
+
+<div id="mainContent" style="display:none">
+
+<div class="header">
+  <div class="brand">黄董的<span>β</span>指标</div>
+  <div class="sub">缩量回MA20 · 量化选股</div>
+  <div class="date" id="headerDate"></div>
+</div>
+
+<div id="app"><div class="loading">加载数据中...</div></div>
+
+<button class="refresh-btn" onclick="location.reload()">🔄 刷新数据</button>
+<div class="last-update" id="lastUpdate"></div>
+<div style="text-align:center;font-size:11px;color:var(--text-dim);padding:4px 0" id="autoRefreshNote">
+  ⏱ 每5分钟自动刷新 | 数据来源：今日标的
+</div>
+<div class="disclaimer">
+  仅供个人参考 · 不构成投资建议<br>策略：缩量回MA20 | 止损 -8% | 持有5个交易日
+</div>
+
+</div><!-- #mainContent -->
+
+<script>
+// ===== 内嵌数据 (由 run_before_recommend.py 自动更新) =====
+// 最后更新: 2026-06-05 14:01:43
+var EMBED_REC = {"signal_date":"2026-06-05","buy_date":"2026-06-05","sell_date":"2026-06-12","kline_latest":"2026-06-05","sh_index_pct":-0.3,"generated_at":"2026-06-05 14:01:29","complete":true,"main":{"code":"sh600007","name":"中国国贸","strategy":"缩量回MA20","price":21.1,"stop_loss":19.41,"score":70,"deviation":-1.12,"volume_ratio":0.62,"rsi":41.0,"ma20":21.34,"ma60":21.07},"main_backup":{"code":"sh600163","name":"中闽能源","strategy":"缩量回MA20(备选)","price":6.71,"stop_loss":6.17,"score":70,"deviation":-1.12,"volume_ratio":0.71,"rsi":49.0},"barry":{"code":"sh603890","name":"春秋电子","strategy":"BARRY","price":30.88,"stop_loss":28.41,"pct_chg":5.18,"rsi":78.0,"valid":false},"barry_valid":false,"all_shrink":[{"code":"sh600007","name":"中国国贸","price":21.1,"stop_loss":19.41,"score":70,"deviation":-1.12,"volume_ratio":0.62,"rsi":41.0,"ma20":21.34,"ma60":21.07,"rank":1},{"code":"sh600163","name":"中闽能源","price":6.71,"stop_loss":6.17,"score":70,"deviation":-1.12,"volume_ratio":0.71,"rsi":49.0,"ma20":6.79,"ma60":6.63,"rank":2},{"code":"sh600322","name":"津投城开","price":2.64,"stop_loss":2.43,"score":70,"deviation":1.25,"volume_ratio":0.52,"rsi":49.0,"ma20":2.61,"ma60":2.48,"rank":3},{"code":"sh600500","name":"中化国际","price":5.71,"stop_loss":5.25,"score":70,"deviation":-1.07,"volume_ratio":0.73,"rsi":42.0,"ma20":5.77,"ma60":4.89,"rank":4},{"code":"sh600941","name":"XD中国移","price":97.11,"stop_loss":89.34,"score":70,"deviation":0.83,"volume_ratio":0.77,"rsi":46.0,"ma20":96.31,"ma60":94.04,"rank":5}],"all_barry":[]};
+var EMBED_VER = {"passed":false,"conclusion":"谨慎 - 部分检查未通过","timestamp":"2026-06-05 14:01:43","signal_date":"2026-06-05","buy_date":"2026-06-05","sell_date":"2026-06-12","sh_index_pct":-0.3,"main_stock":"sh600007","main_name":"中国国贸","main_price":21.1,"main_score":70,"main_rsi":41.0,"main_backup":"sh600163","barry_code":"sh603890","barry_valid":false,"health":{"checklist":{"has_signal_date":true,"has_buy_date":true,"has_sell_date":true,"has_main":true,"has_sh_index_pct":true,"main_code":true,"main_price":true,"main_stop_loss":true,"main_name":true,"main_rsi":true,"signal_is_kline_latest":true,"download_ratio":"N/A","barry_valid":false,"barry_rsi":78.0,"candidate_count":5},"issues":[],"passed":true},"news_filter":{"filtered_count":2,"replaced":false,"replacement":"","detail":{"filtered_out":[{"code":"sh600322","name":"津投城开","risk_level":"RED","reasons":["[RED] [API] 诉讼, [API] 仲裁, [标题] 亏损"],"red_hits":["[API] 诉讼","[API] 仲裁","[标题] 亏损"],"yellow_hits":[],"doc_count":8},{"code":"sh600500","name":"中化国际","risk_level":"RED","reasons":["[RED] [标题] 亏损","[YELLOW] [行业通用] 监管"],"red_hits":["[标题] 亏损"],"yellow_hits":["[行业通用] 监管"],"doc_count":8}],"passed":[{"code":"sh600007","name":"中国国贸","risk_level":"GREEN","reasons":[],"red_hits":[],"yellow_hits":[],"doc_count":8},{"code":"sh600163","name":"中闽能源","risk_level":"GREEN","reasons":[],"red_hits":[],"yellow_hits":[],"doc_count":8},{"code":"sh600941","name":"XD中国移","risk_level":"GREEN","reasons":[],"red_hits":[],"yellow_hits":[],"doc_count":8}],"scan_time":"2026-06-05 14:01:42","total_checked":5,"total_red":2,"total_passed":3}},"signal_strength":{"level":"中等 ★★","action":"谨慎买入","score":30,"max_score":45,"factors":{"candidate_count":{"score":10,"label":"候选5只(多)"},"score_distribution":{"score":5,"label":"得分分布正常"},"market":{"score":5,"label":"上证-0.30%(偏弱)"},"rsi_health":{"score":10,"label":"RSI=41.0"}}},"market_state":{"state":"RED","level":"🔴","label":"弱势市（连续跌破 MA60 18 天，偏离 -5.7%）","below_days":18,"vs_ma60":-5.7,"ma60":8.14},"checklist":{"K线最新日期=信号日":true,"脚本完成标记":true,"JSON数据完整":true,"新闻过滤通过":true,"主推RSI正常(<75)":true,"BARRY未超买(RSI<65)":false,"信号强度":"中等 ★★","MA60市场状态":"🔴 弱势市（连续跌破 MA60 18 天，偏离 -5.7%）"}};
+var EMBED_TRADES = [{"signal_date":"2026-05-29","buy_date":"2026-06-02","sell_date":"2026-06-09","main_code":"sh600203","main_name":"福日电子","main_strategy":"缩量回MA20","buy_price":12.82,"stop_loss":11.79,"actual_sell_price":null,"return_pct":null,"result":null,"status":"pending","verified":true,"barry_code":"sz002484","barry_name":"江海股份","barry_valid":false,"barry_buy_price":77.85,"barry_actual_sell_price":null,"barry_return_pct":null,"barry_result":null,"sh_index_pct":-0.27},{"signal_date":"2026-06-01","buy_date":"2026-06-03","sell_date":"2026-06-10","main_code":"sh600255","main_name":"鑫科材料","main_strategy":"缩量回MA20","buy_price":3.63,"stop_loss":3.34,"actual_sell_price":null,"return_pct":null,"result":null,"status":"pending","verified":true,"barry_code":"sh600863","barry_name":"华能蒙电","barry_valid":false,"barry_buy_price":7.92,"barry_actual_sell_price":null,"barry_return_pct":null,"barry_result":null,"sh_index_pct":0.43},{"signal_date":"2026-06-02","buy_date":"2026-06-04","sell_date":"2026-06-11","main_code":"sh600018","main_name":"上港集团","main_strategy":"缩量回MA20","buy_price":5.08,"stop_loss":4.67,"actual_sell_price":null,"return_pct":null,"result":null,"status":"pending","verified":false,"barry_code":"sz002570","barry_name":"贝因美","barry_valid":true,"barry_buy_price":5.41,"barry_actual_sell_price":null,"barry_return_pct":null,"barry_result":null,"sh_index_pct":null},{"signal_date":"2026-06-03","buy_date":"2026-06-04","sell_date":"2026-06-11","main_code":"sh600323","main_name":"瀚蓝环境","main_strategy":"缩量回MA20","buy_price":30.45,"stop_loss":28.01,"actual_sell_price":null,"return_pct":null,"result":null,"status":"pending","verified":false,"barry_code":"sz002056","barry_name":"横店东磁","barry_valid":false,"barry_buy_price":29.42,"barry_actual_sell_price":null,"barry_return_pct":null,"barry_result":null,"sh_index_pct":-0.64},{"signal_date":"2026-06-04","buy_date":"2026-06-05","sell_date":"2026-06-12","main_code":"sh600023","main_name":"浙能电力","main_strategy":"缩量回MA20","buy_price":6.12,"stop_loss":5.63,"actual_sell_price":null,"return_pct":null,"result":null,"status":"pending","verified":false,"barry_code":"sh600403","barry_name":"大有能源","barry_valid":false,"barry_buy_price":7.75,"barry_actual_sell_price":null,"barry_return_pct":null,"barry_result":null,"sh_index_pct":0.27}];
+
+function loadData() {
+  // Prefer fetch if served via HTTP, fall back to embedded data
+  if (window.location.protocol.startsWith('http')) {
+    // Try live JSON with 3s timeout, fall back to embedded
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    Promise.all([
+      fetch('latest_recommendation.json', {signal: controller.signal}).then(r => r.json()),
+      fetch('verification.json', {signal: controller.signal}).then(r => r.json()),
+      fetch('trade_log.json', {signal: controller.signal}).then(r => r.json())
+    ]).then(([rec, ver, trades]) => {
+      clearTimeout(timeout);
+      render(rec, ver, trades);
+    }).catch(() => {
+      clearTimeout(timeout);
+      render(EMBED_REC, EMBED_VER, EMBED_TRADES);
+    });
+  } else {
+    render(EMBED_REC, EMBED_VER, EMBED_TRADES);
+  }
+}
+
+// Auto-refresh every 5 minutes
+var autoRefreshTimer;
+function startAutoRefresh() {
+  autoRefreshTimer = setInterval(function() {
+    if (window.location.protocol.startsWith('http')) {
+      fetch('latest_recommendation.json', {cache: 'no-cache'}).then(function(r) {
+        return r.json();
+      }).then(function(rec) {
+        // If signal_date changed, full reload
+        var current = document.getElementById('headerDate');
+        if (current && rec.signal_date && current.textContent.indexOf(rec.signal_date) < 0) {
+          location.reload();
+        }
+      }).catch(function() {});
+    }
+  }, 300000); // 5 minutes
+}
+
+function render(rec, ver, trades) {
+  const app = document.getElementById('app');
+  const ms = ver.market_state || {};
+  const sMain = rec.main || {};
+  const sBackup = rec.main_backup || {};
+  const sBarry = rec.barry || {};
+  const ss = ver.signal_strength || {};
+  const nf = ver.news_filter || {};
+  const cl = ver.checklist || {};
+
+  // Update header
+  document.getElementById('headerDate').textContent =
+    `信号日: ${rec.signal_date} | 买入日: ${rec.buy_date} | 卖出日: ${rec.sell_date}`;
+  document.getElementById('lastUpdate').textContent = `数据生成: ${ver.timestamp || rec.generated_at}`;
+
+  // Market state CSS class
+  let msClass = 'market-green';
+  if (ms.state === 'RED') msClass = 'market-red';
+  else if (ms.state === 'YELLOW') msClass = 'market-yellow';
+
+  // Market state icon
+  const msIcons = { RED: '🔴', YELLOW: '🟡', GREEN: '🟢' };
+
+  // Signal strength
+  let ssPct = ss.max_score ? Math.round(ss.score / ss.max_score * 100) : 50;
+  let ssClass = 'medium';
+  if (ssPct >= 70) ssClass = 'strong';
+  else if (ssPct < 40) ssClass = 'weak';
+
+  // Trade stats
+  const doneTrades = trades.filter(t => t.result === 'win' || t.result === 'loss');
+  const wins = doneTrades.filter(t => t.result === 'win').length;
+  const total = doneTrades.length;
+  const winRate = total > 0 ? Math.round(wins / total * 100) : 0;
+
+  // Total return
+  let totalReturn = 0;
+  doneTrades.forEach(t => {
+    if (t.return_pct != null) totalReturn += t.return_pct;
+  });
+
+  // Build filtered list
+  const filteredHTML = nf.detail && nf.detail.filtered_out ? nf.detail.filtered_out.map(f =>
+    `<div class="filtered-item">
+      <strong>${f.name}</strong> (${f.code})
+      <div class="reasons">${(f.reasons || []).join(', ')}</div>
+    </div>`
+  ).join('') : '';
+
+  // Factor scores
+  const factorHTML = ss.factors ? Object.values(ss.factors).map(f =>
+    `<div class="factor"><span>${f.label}</span><span class="score">${f.score}分</span></div>`
+  ).join('') : '';
+
+  app.innerHTML = `
+    <!-- MA60 市场状态 -->
+    <div class="card market-state ${msClass}">
+      <div class="market-state">
+        <div class="icon">${msIcons[ms.state] || '⚪'}</div>
+        <div class="label">${ms.label || '未知'}</div>
+        <div class="detail">
+          连续 <span style="color:${ms.state==='RED'?'var(--red)':'var(--yellow)'}">${ms.below_days || 0}天</span> 跌破MA60
+          | 偏离 <span>${ms.vs_ma60 != null ? ms.vs_ma60.toFixed(1) : '--'}%</span>
+          | MA60: <span>${ms.ma60 || '--'}</span>
+        </div>
+        ${ms.state === 'RED' ? '<div class="market-warn">⚠️ 弱势市胜率仅25% · 净值-53% · 建议观望</div>' : ''}
+      </div>
+    </div>
+
+    <!-- 主推标的 -->
+    <div class="card stock-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">🎯 主力策略 · 缩量回MA20</div>
+          <div class="stock-code">${sMain.code || '--'}</div>
+        </div>
+        <div class="card-badge">评分 ${sMain.score || '--'}</div>
+      </div>
+      <div class="stock-name">${sMain.name || '--'}</div>
+      <div class="stock-strategy">${sMain.strategy || '缩量回MA20'}</div>
+      <div class="stock-metrics">
+        <div class="metric">
+          <div class="val">${sMain.deviation != null ? sMain.deviation.toFixed(1) + '%' : '--'}</div>
+          <div class="lbl">偏离MA20</div>
+        </div>
+        <div class="metric">
+          <div class="val">${sMain.volume_ratio || '--'}</div>
+          <div class="lbl">量比</div>
+        </div>
+        <div class="metric">
+          <div class="val" style="color:${(sMain.rsi||0) > 70 ? 'var(--red)' : (sMain.rsi||0) < 30 ? 'var(--green)' : 'var(--text)'}">${sMain.rsi || '--'}</div>
+          <div class="lbl">RSI(14)</div>
+        </div>
+      </div>
+      <div class="price-row">
+        <div class="price" style="color:var(--red)">¥${sMain.price || '--'}</div>
+        <div class="stop">止损: ¥${sMain.stop_loss || '--'} (-8%)</div>
+      </div>
+      ${sMain.ma20 ? `<div style="font-size:11px;color:var(--text-dim);margin-top:4px">MA20: ${sMain.ma20} | MA60: ${sMain.ma60 || '--'}</div>` : ''}
+    </div>
+
+    <!-- 备选标的 -->
+    <div class="card stock-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">📋 备选 · 缩量回MA20</div>
+          <div class="stock-code">${sBackup.code || '--'}</div>
+        </div>
+        <div class="card-badge">评分 ${sBackup.score || '--'}</div>
+      </div>
+      <div class="stock-name">${sBackup.name || '--'}</div>
+      <div class="stock-metrics">
+        <div class="metric">
+          <div class="val">${sBackup.deviation != null ? sBackup.deviation.toFixed(1) + '%' : '--'}</div>
+          <div class="lbl">偏离MA20</div>
+        </div>
+        <div class="metric">
+          <div class="val">${sBackup.volume_ratio || '--'}</div>
+          <div class="lbl">量比</div>
+        </div>
+        <div class="metric">
+          <div class="val">${sBackup.rsi || '--'}</div>
+          <div class="lbl">RSI(14)</div>
+        </div>
+      </div>
+      <div class="price-row">
+        <div class="price" style="color:var(--red)">¥${sBackup.price || '--'}</div>
+        <div class="stop">止损: ¥${sBackup.stop_loss || '--'} (-8%)</div>
+      </div>
+    </div>
+
+    <!-- BARRY 参考 -->
+    <div class="card stock-card ${!rec.barry_valid ? 'barry-invalid' : ''}">
+      <div class="card-header">
+        <div>
+          <div class="card-title">📊 BARRY 策略 · 参考</div>
+          <div class="stock-code">${sBarry.code || '--'}</div>
+        </div>
+        ${!rec.barry_valid ? '<span class="invalid-tag">⚠️ RSI超买 不推荐</span>' : ''}
+      </div>
+      <div class="stock-name">${sBarry.name || '暂无'}</div>
+      ${sBarry.strategy ? `<div class="stock-strategy">${sBarry.strategy}</div>` : ''}
+      ${sBarry.price ? `
+      <div class="stock-metrics">
+        <div class="metric">
+          <div class="val">${sBarry.pct_chg != null ? '+' + sBarry.pct_chg.toFixed(1) + '%' : '--'}</div>
+          <div class="lbl">涨幅</div>
+        </div>
+        <div class="metric">
+          <div class="val" style="color:var(--red)">${sBarry.rsi || '--'}</div>
+          <div class="lbl">RSI(14)</div>
+        </div>
+        <div class="metric">
+          <div class="val">¥${sBarry.price}</div>
+          <div class="lbl">参考价</div>
+        </div>
+      </div>
+      ` : ''}
+    </div>
+
+    <!-- 信号强度 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">📡 信号强度</div>
+        <div class="card-badge" style="background:${ssClass === 'strong' ? 'rgba(0,184,148,0.2)' : ssClass === 'weak' ? 'rgba(255,71,87,0.2)' : 'rgba(249,202,36,0.2)'};color:${ssClass === 'strong' ? 'var(--green)' : ssClass === 'weak' ? 'var(--red)' : 'var(--yellow)'}">
+          ${ss.level || '--'} (${ss.score || 0}/${ss.max_score || 45})
+        </div>
+      </div>
+      <div class="strength-bar">
+        <div class="strength-fill ${ssClass}" style="width:${ssPct}%"></div>
+      </div>
+      <div style="font-size:12px;margin-bottom:4px">${ss.action || '--'}</div>
+      <div class="strength-factors">${factorHTML}</div>
+    </div>
+
+    <!-- 新闻过滤 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🔍 新闻过滤</div>
+        <div class="card-badge" style="background:${(nf.detail && nf.detail.total_red > 0) ? 'rgba(255,71,87,0.2)' : 'rgba(0,184,148,0.2)'};color:${(nf.detail && nf.detail.total_red > 0) ? 'var(--red)' : 'var(--green)'}">
+          ${nf.detail ? `拦截${nf.detail.total_red}只 · 通过${nf.detail.total_passed}只` : '--'}
+        </div>
+      </div>
+      ${nf.detail ? `
+      <div class="news-summary">
+        <div class="news-stat">
+          <div class="num" style="color:var(--text)">${nf.detail.total_checked || 0}</div>
+          <div class="lbl">总检查</div>
+        </div>
+        <div class="news-stat">
+          <div class="num" style="color:var(--red)">${nf.detail.total_red || 0}</div>
+          <div class="lbl">🚫 拦截</div>
+        </div>
+        <div class="news-stat">
+          <div class="num" style="color:var(--green)">${nf.detail.total_passed || 0}</div>
+          <div class="lbl">✅ 通过</div>
+        </div>
+      </div>
+      ` : ''}
+      ${filteredHTML}
+    </div>
+
+    <!-- 历史交易 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">📜 历史交易</div>
+        <div class="card-badge">${doneTrades.length}笔已结算</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="val" style="color:${winRate >= 50 ? 'var(--red)' : 'var(--green)'}">${winRate}%</div>
+          <div class="lbl">胜率</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" style="color:${totalReturn >= 0 ? 'var(--red)' : 'var(--green)'}">${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(1)}%</div>
+          <div class="lbl">累计收益</div>
+        </div>
+        <div class="stat-card">
+          <div class="val">${trades.length}</div>
+          <div class="lbl">总推荐</div>
+        </div>
+      </div>
+      <table class="trade-table">
+        <tr>
+          <th>信号日</th>
+          <th>标的</th>
+          <th>买入价</th>
+          <th>状态</th>
+        </tr>
+        ${trades.slice().reverse().slice(0, 10).map(t => `
+        <tr>
+          <td>${t.signal_date || '--'}</td>
+          <td><strong>${t.main_name || '--'}</strong><br><span style="font-size:10px;color:var(--text-dim)">${t.main_code || ''}</span></td>
+          <td>¥${t.buy_price || '--'}</td>
+          <td>
+            ${t.result === 'win' ? '<span class="trade-status status-win">✅ 盈利</span>' :
+              t.result === 'loss' ? '<span class="trade-status status-loss">❌ 亏损</span>' :
+              '<span class="trade-status status-pending">⏳ 持仓中</span>'}
+            ${t.return_pct != null ? `<br><span style="font-size:10px" class="${t.return_pct > 0 ? 'trade-up' : 'trade-down'}">${t.return_pct > 0 ? '+' : ''}${t.return_pct.toFixed(1)}%</span>` : ''}
+          </td>
+        </tr>
+        `).join('')}
+      </table>
+    </div>
+  `;
+}
+
+loadData();
+startAutoRefresh();
+
+// Password gate
+(function() {
+  var HASH = 'bc9ca564296f4a1022c7662c912775a5445cdac4f992851c00845c26c75d4531';
+  if (sessionStorage.getItem('_pw') === HASH) {
+    document.getElementById('pwGate').style.display = 'none';
+    document.getElementById('mainContent').style.display = 'block';
+    return;
+  }
+  async function sha256(msg) {
+    var buf = new TextEncoder().encode(msg);
+    var hash = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hash)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
+  }
+  document.getElementById('pwInput').addEventListener('keydown', async function(e) {
+    if (e.key !== 'Enter') return;
+    var h = await sha256(this.value);
+    if (h === HASH) {
+      sessionStorage.setItem('_pw', HASH);
+      document.getElementById('pwGate').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+    } else {
+      document.getElementById('pwError').style.display = 'block';
+      this.value = '';
+    }
+  });
+})();
+</script>
+</body>
+</html>
