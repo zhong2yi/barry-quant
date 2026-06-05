@@ -159,6 +159,73 @@ def screen(stocks):
     print(f"  候选: {len(results)} 只")
     return results
 
+# ===== 新闻过滤 =====
+NEODATA_TOKEN = "tk_AW1Dbwhw0QAdXlzc7t03WK59k4Dt9Fg5"
+NEODATA_URL = "https://copilot.tencent.com/agenttool/v1/neodata"
+
+RED_KEYWORDS = ["诉讼", "冻结", "索赔", "仲裁", "合同纠纷", "被指", "违规", "处罚",
+                "亏损", "退市", "ST", "立案调查", "信披违规", "股权被冻结",
+                "银行账户被冻结", "暴雷", "隐瞒不披露", "警示函", "监管函"]
+
+def check_news(code, name):
+    """查询单只股票近期新闻，返回风险等级和原因"""
+    if not NEODATA_TOKEN:
+        return "GREEN", [], []
+    try:
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {NEODATA_TOKEN}"}
+        payload = {"query": f"{name} {code[2:]} 近期公告新闻", "channel": "neodata", "sub_channel": "workbuddy", "data_type": "doc"}
+        r = requests.post(NEODATA_URL, headers=headers, json=payload, timeout=15)
+        if r.status_code != 200:
+            return "UNKNOWN", [], []
+        data = r.json()
+        docs = data.get("docs", data.get("data", {}).get("docs", []))
+        if not docs:
+            return "GREEN", [], []
+
+        red_hits = []
+        yellow_hits = []
+        for doc in docs:
+            title = str(doc.get("title", ""))
+            body = str(doc.get("content", doc.get("body", "")))
+            text = title + " " + body
+            for kw in RED_KEYWORDS:
+                if kw in text and name[:2] in text[:50]:
+                    red_hits.append(f"[标题] {kw}" if kw in title else f"[内容] {kw}")
+                    break
+
+        if red_hits:
+            return "RED", list(set(red_hits)), []
+        return "GREEN", [], []
+    except Exception as e:
+        return "UNKNOWN", [], [str(e)]
+
+def news_filter(candidates):
+    """对候选标的执行新闻过滤"""
+    print("[3/5] 新闻过滤...")
+    if not NEODATA_TOKEN:
+        print("  跳过: 无Token")
+        return candidates, {"filtered_out": [], "passed": [c['code'] for c in candidates]}
+
+    passed = []
+    filtered_out = []
+    for i, c in enumerate(candidates):
+        level, reds, _ = check_news(c['code'], c['name'])
+        if level == "RED":
+            filtered_out.append({"code": c['code'], "name": c['name'], "reasons": reds})
+            print(f"  RED: {c['code']} {c['name']}: {reds}")
+        else:
+            passed.append(c)
+
+    print(f"  过滤: {len(filtered_out)}只 | 通过: {len(passed)}只")
+    detail = {
+        "filtered_out": filtered_out,
+        "passed": [{"code": c['code'], "name": c['name'], "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []} for c in passed],
+        "total_checked": len(candidates),
+        "total_red": len(filtered_out),
+        "total_passed": len(passed)
+    }
+    return passed, detail
+
 # ===== MA60 上证评估 =====
 def check_market():
     """用上证指数评估"""
@@ -237,7 +304,7 @@ def signal_strength(candidates, market):
     return {'level': level, 'action': action, 'score': total, 'max_score': 45, 'factors': factors}
 
 # ===== 生成看板 =====
-def generate_html(candidates, market, ss, today_str, buy_date, sell_date):
+def generate_html(candidates, market, ss, today_str, buy_date, sell_date, news_detail=None):
     print("[5/5] 生成看板...")
 
     dash_dir = os.path.join(os.path.dirname(WORKSPACE), 'dashboard')
@@ -281,14 +348,16 @@ def generate_html(candidates, market, ss, today_str, buy_date, sell_date):
             'signal_is_kline_latest': True, 'download_ratio': 'N/A',
             'barry_valid': False, 'barry_rsi': 0, 'candidate_count': len(candidates)
         }, 'issues': [], 'passed': True},
-        'news_filter': {'filtered_count':0,'replaced':False,'replacement':'',
+        'news_filter': (news_detail if news_detail else
+            {'filtered_count':0,'replaced':False,'replacement':'',
             'detail': {'filtered_out':[],'passed':[],
                 'scan_time': dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'total_checked': len(candidates), 'total_red': 0, 'total_passed': len(candidates)}},
+                'total_checked': len(candidates), 'total_red': 0, 'total_passed': len(candidates)}}),
         'signal_strength': ss, 'market_state': market,
         'checklist': {
             'K线最新日期=信号日': True, '脚本完成标记': True, 'JSON数据完整': True,
-            '新闻过滤通过': True, '主推RSI正常(<75)': True, 'BARRY未超买(RSI<65)': True,
+            '新闻过滤通过': (news_detail.get('total_red', 0) == 0) if news_detail else True,
+            '主推RSI正常(<75)': True, 'BARRY未超买(RSI<65)': True,
             '信号强度': ss.get('level','?'), 'MA60市场状态': market.get('label','?')
         }
     }
@@ -320,6 +389,7 @@ def main():
         sys.exit(1)
 
     candidates = screen(stocks)
+    candidates, news_detail = news_filter(candidates)
     market = check_market()
     ss = signal_strength(candidates, market)
 
@@ -338,7 +408,7 @@ def main():
     print(f"\n  市场: {market['label']}")
     print(f"  信号: {ss['level']} ({ss['score']}/{ss['max_score']})")
 
-    generate_html(candidates, market, ss, ts, ts, sell)
+    generate_html(candidates, market, ss, ts, ts, sell, news_detail)
     print(f"\n===== 完成 ({time.time()-start:.0f}s) =====")
 
 if __name__ == '__main__':
