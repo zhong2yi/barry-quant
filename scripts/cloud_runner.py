@@ -412,7 +412,7 @@ def generate_html(candidates, market, ss, today_str, buy_date, sell_date, news_d
     html = re.sub(r'var EMBED_TRADES = \[.*?\];',
                    f'var EMBED_TRADES = {json.dumps(old_trades, ensure_ascii=False)};',
                    html, flags=re.DOTALL)
-    html = _re.sub(r'// 最后更新: .*',
+    html = re.sub(r'// 最后更新: .*',
                   f'// 最后更新: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', html)
 
     site_path = os.path.join(SITE_DIR, 'index.html')
