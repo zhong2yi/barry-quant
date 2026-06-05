@@ -299,6 +299,19 @@
   .pw-input:focus { border-color: #3b82f6; }
   .pw-error { color: var(--red); font-size: 13px; margin-top: 10px; display: none; }
   .pw-hint { color: var(--text-dim); font-size: 11px; margin-top: 20px; }
+  .pw-btn {
+    width: 100%; max-width: 280px;
+    padding: 14px;
+    margin-top: 12px;
+    background: #3b82f6;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  .pw-btn:active { background: #2563eb; }
 </style>
 </head>
 <body>
@@ -308,6 +321,7 @@
   <div class="pw-brand">黄董的<span>β</span>指标</div>
   <div class="pw-sub">请输入访问密码</div>
   <input type="password" class="pw-input" id="pwInput" placeholder="密码" autofocus>
+  <button class="pw-btn" id="pwBtn">确认进入</button>
   <div class="pw-error" id="pwError">密码错误，请重试</div>
   <div class="pw-hint">私人看板 · 请勿外传</div>
 </div>
@@ -643,18 +657,22 @@ startAutoRefresh();
     var hash = await crypto.subtle.digest('SHA-256', buf);
     return Array.from(new Uint8Array(hash)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
   }
-  document.getElementById('pwInput').addEventListener('keydown', async function(e) {
-    if (e.key !== 'Enter') return;
-    var h = await sha256(this.value);
+  async function tryLogin() {
+    var pw = document.getElementById('pwInput').value;
+    var h = await sha256(pw);
     if (h === HASH) {
       sessionStorage.setItem('_pw', HASH);
       document.getElementById('pwGate').style.display = 'none';
       document.getElementById('mainContent').style.display = 'block';
     } else {
       document.getElementById('pwError').style.display = 'block';
-      this.value = '';
+      document.getElementById('pwInput').value = '';
     }
+  }
+  document.getElementById('pwInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') tryLogin();
   });
+  document.getElementById('pwBtn').addEventListener('click', tryLogin);
 })();
 </script>
 </body>
