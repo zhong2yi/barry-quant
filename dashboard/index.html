@@ -47,6 +47,17 @@
   .header .brand span { color: #3b82f6; }
   .header .sub { font-size: 12px; color: var(--text-sub); margin-top: 3px; }
   .header .date { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .update-time {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 4px 14px;
+    background: #eff6ff;
+    color: #3b82f6;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 8px;
+    letter-spacing: 0.5px;
+  }
 
   .card {
     background: var(--card);
@@ -332,6 +343,7 @@
   <div class="brand">黄董的<span>β</span>指标</div>
   <div class="sub">量化选股</div>
   <div class="date" id="headerDate"></div>
+  <div class="update-time" id="updateTime"></div>
 </div>
 
 <div id="app"><div class="loading">加载数据中...</div></div>
@@ -407,7 +419,15 @@ function render(rec, ver, trades) {
   // Update header
   document.getElementById('headerDate').textContent =
     `信号日: ${rec.signal_date} | 买入日: ${rec.buy_date} | 卖出日: ${rec.sell_date}`;
-  document.getElementById('lastUpdate').textContent = `数据生成: ${ver.timestamp || rec.generated_at}`;
+  var ts = ver.timestamp || rec.generated_at || '';
+  if (ts) {
+    var parts = ts.split(/[ -:]/);
+    if (parts.length >= 4) {
+      document.getElementById('updateTime').textContent =
+        '📅 更新于 ' + parts[1] + '月' + parts[2] + '日 ' + parts[3] + ':' + parts[4];
+    }
+  }
+  document.getElementById('lastUpdate').textContent = `数据生成: ${ts}`;
 
   // Market state CSS class
   let msClass = 'market-green';
