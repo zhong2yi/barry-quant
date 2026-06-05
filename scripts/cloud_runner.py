@@ -57,9 +57,8 @@ def get_stock_pool():
 # ===== 腾讯K线 =====
 def get_kline(code, n=120):
     """从腾讯接口获取前复权日线"""
-    code_sh = code.replace('sz', 'sh') if code.startswith('sz') else code
     url = (f'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get'
-           f'?param={code_sh},day,,,{n},qfq&_var=kline_dayfq')
+           f'?param={code},day,,,{n},qfq&_var=kline_dayfq')
     try:
         r = requests.get(url, headers=T_HEADERS, timeout=10)
         js = json.loads(r.text[r.text.index('=')+1:])
