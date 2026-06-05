@@ -111,7 +111,8 @@ def sig_strength(cands, mkt):
         fs['s'] = {'score':15 if mx>=70 else (10 if mx>=55 else 5),'label':'高分' if mx>=70 else '中等'}
     else: fs['s'] = {'score':0,'label':'无'}
     ms = mkt.get('state','GREEN')
-    fs['m'] = {'score':10 if ms=='GREEN' else 5,'label':f'上证{mkt.get(\"sh_index_pct\",0):+.1f}%'}
+    spct = mkt.get('sh_index_pct', 0)
+    fs['m'] = {'score':10 if ms=='GREEN' else 5,'label':f'上证{spct:+.1f}%'}
     if n>0:
         r = cands[0]['rsi']
         fs['r'] = {'score':10 if 30<=r<=50 else (5 if r<=65 else 3),'label':f'RSI={r}'}
