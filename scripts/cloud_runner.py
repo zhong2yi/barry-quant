@@ -386,9 +386,9 @@ def generate_html(candidates, market, ss, today_str, buy_date, sell_date, news_d
     html = re.sub(r'var EMBED_VER = \{.*?\};',
                   f'var EMBED_VER = {json.dumps(ver, ensure_ascii=False)};',
                   html, flags=re.DOTALL)
-    # Add today's trade to trade log (keep last 10, add new at end)
+    # Add today's trade (with sell_price=null, current_price=null)
     today_short = ts[5:]  # "06-05"
-    new_trade = json.dumps({"signal_date":today_short,"main_code":main.get('code',''),"main_name":main.get('name',''),"buy_price":main.get('price',0),"current_price":None,"return_pct":None}, ensure_ascii=False)
+    new_trade = json.dumps({"signal_date":today_short,"main_code":main.get('code',''),"main_name":main.get('name',''),"buy_price":main.get('price',0),"sell_price":None,"current_price":None}, ensure_ascii=False)
     html = re.sub(r'var EMBED_TRADES = \[', f'var EMBED_TRADES = [{new_trade},', html, count=1)
     html = re.sub(r'// 最后更新: .*',
                   f'// 最后更新: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', html)
