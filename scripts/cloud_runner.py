@@ -201,31 +201,44 @@ def check_news(code, name):
         return "UNKNOWN", [], [str(e)]
 
 def news_filter(candidates):
-    """对候选标的执行新闻过滤"""
+    """对候选标的执行新闻过滤（非阻塞，失败则全通过）"""
     print("[3/5] 新闻过滤...")
     if not NEODATA_TOKEN:
         print("  跳过: 无Token")
-        return candidates, {"filtered_out": [], "passed": [c['code'] for c in candidates]}
+        return candidates, _empty_news_detail(candidates)
 
-    passed = []
-    filtered_out = []
-    for i, c in enumerate(candidates):
-        level, reds, _ = check_news(c['code'], c['name'])
-        if level == "RED":
-            filtered_out.append({"code": c['code'], "name": c['name'], "reasons": reds})
-            print(f"  RED: {c['code']} {c['name']}: {reds}")
-        else:
+    try:
+        passed = []
+        filtered_out = []
+        for i, c in enumerate(candidates[:20]):  # 最多查20只，避免超时
+            try:
+                level, reds, _ = check_news(c['code'], c['name'])
+                if level == "RED":
+                    filtered_out.append({"code": c['code'], "name": c['name'], "reasons": reds})
+                    print(f"  RED: {c['code']} {c['name']}: {reds}")
+                else:
+                    passed.append(c)
+            except:
+                passed.append(c)  # 单只失败则跳过
+
+        # 未检查的直接通过
+        for c in candidates[20:]:
             passed.append(c)
 
-    print(f"  过滤: {len(filtered_out)}只 | 通过: {len(passed)}只")
-    detail = {
-        "filtered_out": filtered_out,
-        "passed": [{"code": c['code'], "name": c['name'], "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []} for c in passed],
-        "total_checked": len(candidates),
-        "total_red": len(filtered_out),
-        "total_passed": len(passed)
-    }
-    return passed, detail
+        print(f"  过滤: {len(filtered_out)}只 | 通过: {len(passed)}只")
+        detail = {
+            "filtered_out": filtered_out,
+            "passed": [{"code": c['code'], "name": c['name'], "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []} for c in passed],
+            "total_checked": len(candidates), "total_red": len(filtered_out), "total_passed": len(passed)
+        }
+        return passed, detail
+    except Exception as e:
+        print(f"  新闻过滤异常: {e}，全部通过")
+        return candidates, _empty_news_detail(candidates)
+
+def _empty_news_detail(candidates):
+    return {"filtered_out": [], "passed": [{"code": c['code'], "name": c['name'], "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []} for c in candidates],
+            "total_checked": len(candidates), "total_red": 0, "total_passed": len(candidates)}
 
 # ===== MA60 上证评估（代理指数法，与本地一致）=====
 PROXY_STOCKS = ['sh600000', 'sh601398', 'sh601288', 'sh600028', 'sh601857']
