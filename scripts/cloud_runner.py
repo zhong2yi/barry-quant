@@ -112,9 +112,10 @@ def check_one(code, name):
 
         rsi_list = calc_rsi(closes)
         rsi = rsi_list[-1] if rsi_list else 50
-        if rsi < 30 or rsi > 70:
-            return None
+        if np.isnan(rsi):
+            rsi = 50
 
+        # Scoring only, no RSI hard filter per local logic
         score = 45
         if ma5 > ma20:
             score += 15
@@ -226,31 +227,46 @@ def news_filter(candidates):
     }
     return passed, detail
 
-# ===== MA60 上证评估 =====
+# ===== MA60 上证评估（代理指数法，与本地一致）=====
+PROXY_STOCKS = ['sh600000', 'sh601398', 'sh601288', 'sh600028', 'sh601857']
+
 def check_market():
-    """用上证指数评估"""
-    print("[3/5] MA60 评估...")
+    """用5大权重股代理指数评估MA60，与本地逻辑一致"""
+    print("[4/5] MA60 评估（代理指数）...")
     try:
-        code = 'sh000001'
-        url = (f'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get'
-               f'?param={code},day,,,120,qfq&_var=kline_dayfq')
-        r = requests.get(url, headers=T_HEADERS, timeout=10)
-        js = json.loads(r.text[r.text.index('=')+1:])
-        ck = list(js['data'].keys())[0]
-        raw = js['data'][ck].get('qfqday') or js['data'][ck].get('day') or []
-        if not raw or len(raw) < 60:
+        # 收集代理股票数据
+        proxy_closes = {}
+        proxy_dates = {}
+        for pc in PROXY_STOCKS:
+            data = get_kline(pc, n=320)
+            if data is not None:
+                closes, _ = data
+                if len(closes) >= 60:
+                    proxy_closes[pc] = closes
+                    proxy_dates[pc] = len(closes)
+
+        if len(proxy_closes) < 3:
             return default_market()
 
-        closes = np.array([float(x[2]) for x in raw])
-        ma60 = float(np.mean(closes[-60:]))
-        price = float(closes[-1])
+        # 构建代理指数：取各股收盘价平均值
+        min_len = min(len(c) for c in proxy_closes.values())
+        proxy_index = np.zeros(min_len)
+        count = 0
+        for pc in proxy_closes:
+            closes = proxy_closes[pc][-min_len:]
+            proxy_index += closes
+            count += 1
+        proxy_index /= count
+
+        ma60 = float(np.mean(proxy_index[-60:]))
+        price = float(proxy_index[-1])
         vs_ma60 = (price - ma60) / ma60 * 100
 
         # 连续跌破天数
         below = 0
-        for i in range(len(closes)-1, max(0, len(closes)-60), -1):
-            ma = float(np.mean(closes[max(0,i-59):i+1]))
-            if closes[i] < ma:
+        for i in range(len(proxy_index)-1, max(0, len(proxy_index)-90), -1):
+            ma = float(np.mean(proxy_index[max(0,i-59):i+1]))
+            if proxy_index[i] < ma:
                 below += 1
             else:
                 break
@@ -262,11 +278,12 @@ def check_market():
         else:
             state, label = 'GREEN', '健康市（站上MA60）'
 
-        sh_pct = (closes[-1] - closes[-2]) / closes[-2] * 100 if len(closes) > 1 else 0
+        print(f"  代理指数: {price:.2f} | MA60: {ma60:.2f} | 偏离: {vs_ma60:.1f}% | 连续跌破: {below}天")
         return {'state': state, 'label': label, 'below_days': below,
                 'vs_ma60': round(vs_ma60, 1), 'ma60': round(ma60, 2),
-                'sh_index_pct': round(float(sh_pct), 2)}
-    except:
+                'sh_index_pct': round(float((proxy_index[-1]-proxy_index[-2])/proxy_index[-2]*100), 2) if len(proxy_index)>1 else 0}
+    except Exception as e:
+        print(f"  [WARN] MA60评估失败: {e}")
         return default_market()
 
 def default_market():
@@ -397,7 +414,7 @@ def main():
     ts = today.strftime('%Y-%m-%d')
     sell = (today + dt.timedelta(days=HOLD_DAYS+1)).strftime('%Y-%m-%d')
 
-    print(f"\n[4/5] 结果:")
+    print(f"\n[5/5] 结果:")
     if candidates:
         for i, c in enumerate(candidates[:3]):
             print(f"  #{i+1} {c['code']} {c['name']} ${c['price']} "
