@@ -23,14 +23,23 @@ HOLD_DAYS = 5
 
 # ===== 股池 =====
 def get_stock_pool():
-    """获取沪深主板股票"""
+    """获取沪深主板股票 - 优先内置股池，备选akshare"""
     print("[1/5] 获取股池...")
-    stocks = []
 
-    # 尝试 akshare
+    # 1) 内置股池（最快，最可靠）
+    pool_file = os.path.join(WORKSPACE, 'stock_pool_min.json')
+    if os.path.exists(pool_file):
+        with open(pool_file, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+        stocks = [{'code': x['c'], 'name': x['n']} for x in raw]
+        print(f"  内置股池: {len(stocks)} 只")
+        return stocks
+
+    # 2) 尝试 akshare
     try:
         import akshare as ak
         df = ak.stock_info_a_code_name()
+        stocks = []
         for _, row in df.iterrows():
             code = str(row['code'])
             name = str(row['name'])
@@ -39,16 +48,11 @@ def get_stock_pool():
             if code.startswith('60') or code.startswith('00'):
                 prefix = 'sh' if code.startswith('6') else 'sz'
                 stocks.append({'code': prefix + code, 'name': name})
+        print(f"  akshare: {len(stocks)} 只")
+        return stocks
     except Exception as e:
-        print(f"  akshare failed: {e}, using bundled pool")
-        # 回退到内置股池
-        pool_file = os.path.join(WORKSPACE, 'stock_pool.json')
-        if os.path.exists(pool_file):
-            with open(pool_file, 'r', encoding='utf-8') as f:
-                stocks = json.load(f)
-
-    print(f"  股池: {len(stocks)} 只")
-    return stocks
+        print(f"  akshare failed: {e}")
+        return []
 
 # ===== 腾讯K线 =====
 def get_kline(code, n=120):
