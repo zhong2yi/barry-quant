@@ -386,27 +386,18 @@ def generate_html(candidates, market, ss, today_str, buy_date, sell_date, news_d
     html = re.sub(r'var EMBED_VER = \{.*?\};',
                   f'var EMBED_VER = {json.dumps(ver, ensure_ascii=False)};',
                   html, flags=re.DOTALL)
-    # Update trade log
+    # Add today's trade
     today_short = ts[5:]
     match = re.search(r'var EMBED_TRADES = (\[.*?\]);', html, flags=re.DOTALL)
     old_trades = []
     if match:
         try: old_trades = json.loads(match.group(1))
         except: old_trades = []
-    updated_trades = []
-    for t in old_trades:
-        if t.get('sell_price') is None and t.get('main_code'):
-            data = get_kline(t['main_code'], n=5)
-            if data is not None:
-                t['current_price'] = round(float(data[0][-1]), 2)
-        else:
-            t['current_price'] = t.get('sell_price')
-        updated_trades.append(t)
-    new_trade = {"signal_date":today_short,"main_code":main.get('code',''),"main_name":main.get('name',''),"buy_price":main.get('price',0),"sell_price":None,"current_price":main.get('price',0)}
-    updated_trades.insert(0, new_trade)
-    updated_trades = updated_trades[:10]
+    new_trade = {"signal_date":today_short,"main_code":main.get('code',''),"main_name":main.get('name',''),"buy_price":main.get('price',0),"sell_price":None,"current_price":None}
+    old_trades.insert(0, new_trade)
+    old_trades = old_trades[:10]
     html = re.sub(r'var EMBED_TRADES = \[.*?\];',
-                   f'var EMBED_TRADES = {json.dumps(updated_trades, ensure_ascii=False)};',
+                   f'var EMBED_TRADES = {json.dumps(old_trades, ensure_ascii=False)};',
                    html, flags=re.DOTALL)
     html = _re.sub(r'// 最后更新: .*',
                   f'// 最后更新: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', html)
