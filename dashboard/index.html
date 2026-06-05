@@ -330,7 +330,7 @@
 
 <div class="header">
   <div class="brand">黄董的<span>β</span>指标</div>
-  <div class="sub">缩量回MA20 · 量化选股</div>
+  <div class="sub">量化选股</div>
   <div class="date" id="headerDate"></div>
 </div>
 
@@ -342,7 +342,7 @@
   ⏱ 每5分钟自动刷新 | 数据来源：今日标的
 </div>
 <div class="disclaimer">
-  仅供个人参考 · 不构成投资建议<br>策略：缩量回MA20 | 止损 -8% | 持有5个交易日
+  仅供个人参考 · 不构成投资建议<br>止损 -8% | 持有5个交易日
 </div>
 
 </div><!-- #mainContent -->
@@ -467,13 +467,12 @@ function render(rec, ver, trades) {
     <div class="card stock-card">
       <div class="card-header">
         <div>
-          <div class="card-title">🎯 主力策略 · 缩量回MA20</div>
+          <div class="card-title">🎯 主推标的</div>
           <div class="stock-code">${sMain.code || '--'}</div>
         </div>
         <div class="card-badge">评分 ${sMain.score || '--'}</div>
       </div>
       <div class="stock-name">${sMain.name || '--'}</div>
-      <div class="stock-strategy">${sMain.strategy || '缩量回MA20'}</div>
       <div class="stock-metrics">
         <div class="metric">
           <div class="val">${sMain.deviation != null ? sMain.deviation.toFixed(1) + '%' : '--'}</div>
@@ -499,7 +498,7 @@ function render(rec, ver, trades) {
     <div class="card stock-card">
       <div class="card-header">
         <div>
-          <div class="card-title">📋 备选 · 缩量回MA20</div>
+          <div class="card-title">📋 备选标的</div>
           <div class="stock-code">${sBackup.code || '--'}</div>
         </div>
         <div class="card-badge">评分 ${sBackup.score || '--'}</div>
@@ -529,7 +528,7 @@ function render(rec, ver, trades) {
     <div class="card stock-card ${!rec.barry_valid ? 'barry-invalid' : ''}">
       <div class="card-header">
         <div>
-          <div class="card-title">📊 BARRY 策略 · 参考</div>
+          <div class="card-title">📊 参考标的</div>
           <div class="stock-code">${sBarry.code || '--'}</div>
         </div>
         ${!rec.barry_valid ? '<span class="invalid-tag">⚠️ RSI超买 不推荐</span>' : ''}
