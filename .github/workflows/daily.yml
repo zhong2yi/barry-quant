@@ -2,14 +2,11 @@ name: Daily Stock Pick
 
 on:
   schedule:
-    # 北京时间 08:00 = UTC 00:00
     - cron: '0 0 * * 1-5'
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
   pick:
@@ -35,14 +32,10 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy to Pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: '_site'
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          publish_branch: gh-pages
+          force_orphan: true
