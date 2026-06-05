@@ -1,11 +1,11 @@
 """
-Cloud Runner - GitHub Actions 自动化选股 v2
-策略：缩量回MA20（与本地同逻辑）
-数据源：akshare(股池) + 腾讯接口(K线，前复权)
+Cloud Runner v5 - GitHub Actions 自动化选股
+策略：缩量回MA20 | 数据源：腾讯K线(前复权) | 20线程并行
 """
 import json, os, sys, time, datetime as dt
 import numpy as np
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 WORKSPACE = os.path.dirname(os.path.abspath(__file__))
 SITE_DIR = os.path.join(os.path.dirname(WORKSPACE), '_site')
@@ -84,69 +84,76 @@ def calc_rsi(closes, period=14):
     rs = np.divide(avg_gain, avg_loss, out=np.ones_like(avg_gain)*100, where=avg_loss>0)
     return list(100 - 100/(1 + rs))
 
-# ===== 筛选 =====
+# ===== 筛选（多线程）=====
+def check_one(code, name):
+    """Check a single stock, return result or None"""
+    try:
+        data = get_kline(code)
+        if data is None:
+            return None
+        closes, volumes = data
+
+        ma20 = np.mean(closes[-20:])
+        ma60 = np.mean(closes[-60:])
+        ma5 = np.mean(closes[-5:])
+        price = closes[-1]
+
+        if ma20 <= ma60:
+            return None
+
+        dev = (price - ma20) / ma20 * 100
+        if abs(dev) > MA20_DEVIATION:
+            return None
+
+        vol5avg = np.mean(volumes[-6:-1])
+        vratio = volumes[-1] / vol5avg if vol5avg > 0 else 1.0
+        if vratio >= VOLUME_RATIO_MAX:
+            return None
+
+        rsi_list = calc_rsi(closes)
+        rsi = rsi_list[-1] if rsi_list else 50
+        if rsi < 30 or rsi > 70:
+            return None
+
+        score = 45
+        if ma5 > ma20:
+            score += 15
+        if rsi < 50:
+            score += 10
+
+        return {
+            'code': code, 'name': name,
+            'price': round(float(price), 2),
+            'stop_loss': round(float(price) * STOP_LOSS, 2),
+            'score': score,
+            'deviation': round(float(dev), 2),
+            'volume_ratio': round(float(vratio), 2),
+            'rsi': round(float(rsi), 1),
+            'ma20': round(float(ma20), 2),
+            'ma60': round(float(ma60), 2)
+        }
+    except:
+        return None
+
 def screen(stocks):
-    """扫描所有股票"""
-    print("[2/5] 扫描中...")
+    """20线程并行扫描"""
+    print("[2/5] 扫描中（20线程并行）...")
     results = []
     total = len(stocks)
 
-    for i, s in enumerate(stocks):
-        if i % 500 == 0:
-            print(f"  进度: {i}/{total}")
-
-        try:
-            data = get_kline(s['code'])
-            if data is None:
-                continue
-            closes, volumes = data
-
-            ma20 = np.mean(closes[-20:])
-            ma60 = np.mean(closes[-60:])
-            ma5 = np.mean(closes[-5:])
-            price = closes[-1]
-
-            # 多头趋势
-            if ma20 <= ma60:
-                continue
-
-            # 偏离MA20
-            dev = (price - ma20) / ma20 * 100
-            if abs(dev) > MA20_DEVIATION:
-                continue
-
-            # 缩量
-            vol5avg = np.mean(volumes[-6:-1])
-            vratio = volumes[-1] / vol5avg if vol5avg > 0 else 1.0
-            if vratio >= VOLUME_RATIO_MAX:
-                continue
-
-            # RSI
-            rsi_list = calc_rsi(closes)
-            rsi = rsi_list[-1] if rsi_list else 50
-            if rsi < 30 or rsi > 70:
-                continue
-
-            # 评分
-            score = 45
-            if ma5 > ma20:
-                score += 15
-            if rsi < 50:
-                score += 10
-
-            results.append({
-                'code': s['code'], 'name': s['name'],
-                'price': round(float(price), 2),
-                'stop_loss': round(float(price) * STOP_LOSS, 2),
-                'score': score,
-                'deviation': round(float(dev), 2),
-                'volume_ratio': round(float(vratio), 2),
-                'rsi': round(float(rsi), 1),
-                'ma20': round(float(ma20), 2),
-                'ma60': round(float(ma60), 2)
-            })
-        except:
-            continue
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        futures = {pool.submit(check_one, s['code'], s['name']): s for s in stocks}
+        done = 0
+        for f in as_completed(futures):
+            done += 1
+            if done % 500 == 0:
+                print(f"  进度: {done}/{total} ({len(results)} 候选)")
+            try:
+                r = f.result()
+                if r:
+                    results.append(r)
+            except:
+                pass
 
     results.sort(key=lambda x: -x['score'])
     print(f"  候选: {len(results)} 只")
