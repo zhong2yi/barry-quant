@@ -35,6 +35,7 @@ jobs:
           PYTHONIOENCODING: utf-8
 
       - name: Deploy to Pages
+        if: hashFiles('_site/index.html') != ''
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
