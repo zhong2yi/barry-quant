@@ -350,9 +350,6 @@
 
 <button class="refresh-btn" onclick="location.reload()">🔄 刷新数据</button>
 <div class="last-update" id="lastUpdate"></div>
-<div style="text-align:center;font-size:11px;color:var(--text-dim);padding:4px 0" id="autoRefreshNote">
-  ⏱ 每5分钟自动刷新 | 数据来源：今日标的
-</div>
 <div class="disclaimer">
   仅供个人参考 · 不构成投资建议<br>止损 -8% | 持有5个交易日
 </div>
@@ -369,11 +366,6 @@ var EMBED_TRADES = [{"signal_date":"05-29","main_code":"sh600203","main_name":"�
 function loadData() {
   // Always use embedded data (no JSON files on GitHub Pages)
   render(EMBED_REC, EMBED_VER, EMBED_TRADES);
-}
-
-// Auto-refresh every 5 minutes (simple reload for GitHub Pages)
-function startAutoRefresh() {
-  setInterval(function() { location.reload(); }, 300000);
 }
 
 function render(rec, ver, trades) {
@@ -625,7 +617,6 @@ function render(rec, ver, trades) {
 }
 
 loadData();
-startAutoRefresh();
 
 // Password gate
 (function() {
