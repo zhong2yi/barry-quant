@@ -141,6 +141,7 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
 
     ver = {'passed':len(cands)>0,'conclusion':'推荐' if cands else '无推荐',
            'timestamp':dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+           'time_display':dt.datetime.now().strftime('%m月%d日 %H:%M'),
            'signal_date':ts,'buy_date':bd,'sell_date':sd,
            'sh_index_pct':mkt.get('sh_index_pct',0),
            'main_stock':mn.get('code',''),'main_name':mn.get('name',''),
@@ -163,14 +164,22 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
     html = re.sub(r'var EMBED_REC = \{.*?\};', f'var EMBED_REC = {json.dumps(rec, ensure_ascii=False)};', html, flags=re.DOTALL)
     html = re.sub(r'var EMBED_VER = \{.*?\};', f'var EMBED_VER = {json.dumps(ver, ensure_ascii=False)};', html, flags=re.DOTALL)
 
-    # Trade: add today, keep last 10
+    # Trade: update current prices for active trades, add today, keep last 10
     m = re.search(r'var EMBED_TRADES = (\[.*?\]);', html, flags=re.DOTALL)
     ot = []
     if m:
         try: ot = json.loads(m.group(1))
         except: ot = []
+    # Update current_price for active trades
+    for t in ot:
+        if t.get('sell_price') is None and t.get('main_code'):
+            try:
+                d = get_kl(t['main_code'], n=3)
+                if d is not None:
+                    t['current_price'] = round(float(d[0][-1]), 2)
+            except: pass
     nt = {"signal_date":ts[5:],"main_code":mn.get('code',''),"main_name":mn.get('name',''),
-          "buy_price":mn.get('price',0),"sell_price":None,"current_price":None}
+          "buy_price":mn.get('price',0),"sell_price":None,"current_price":mn.get('price',0)}
     ot.insert(0, nt); ot = ot[:10]
     html = re.sub(r'var EMBED_TRADES = \[.*?\];', f'var EMBED_TRADES = {json.dumps(ot, ensure_ascii=False)};', html, flags=re.DOTALL)
     html = re.sub(r'// 最后更新: .*', f'// 最后更新: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', html)
