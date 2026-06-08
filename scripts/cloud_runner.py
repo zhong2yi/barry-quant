@@ -177,7 +177,7 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
     for t in ot:
         if t.get('sell_price') is None and t.get('main_code'):
             try:
-                d = get_kl(t['main_code'], n=3)
+                d = get_kl(t['main_code'], n=60)
                 if d is not None:
                     t['current_price'] = round(float(d[0][-1]), 2)
             except: pass
