@@ -8,6 +8,9 @@ import requests
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# 北京时间（GitHub Actions 用 UTC，需 +8）
+def bj_now(): return dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
+
 WORKSPACE = os.path.dirname(os.path.abspath(__file__))
 SITE_DIR = os.path.join(os.path.dirname(WORKSPACE), '_site')
 os.makedirs(SITE_DIR, exist_ok=True)
@@ -134,14 +137,14 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
 
     rec = {'signal_date':ts,'buy_date':bd,'sell_date':sd,'kline_latest':ts,
            'sh_index_pct':mkt.get('sh_index_pct',0),
-           'generated_at':dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),'complete':True,
+           'generated_at':bj_now().strftime('%Y-%m-%d %H:%M:%S'),'complete':True,
            'main':mn,'main_backup':bk,
            'barry':{'code':'','name':'暂无','price':0,'rsi':0,'pct_chg':0,'valid':False},
            'barry_valid':False,'all_shrink':cands[:5],'all_barry':[]}
 
     ver = {'passed':len(cands)>0,'conclusion':'推荐' if cands else '无推荐',
-           'timestamp':dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-           'time_display':dt.datetime.now().strftime('%m月%d日 %H:%M'),
+           'timestamp':bj_now().strftime('%Y-%m-%d %H:%M:%S'),
+           'time_display':bj_now().strftime('%m月%d日 %H:%M'),
            'signal_date':ts,'buy_date':bd,'sell_date':sd,
            'sh_index_pct':mkt.get('sh_index_pct',0),
            'main_stock':mn.get('code',''),'main_name':mn.get('name',''),
@@ -182,7 +185,7 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
           "buy_price":mn.get('price',0),"sell_price":None,"current_price":mn.get('price',0)}
     ot.insert(0, nt); ot = ot[:10]
     html = re.sub(r'var EMBED_TRADES = \[.*?\];', f'var EMBED_TRADES = {json.dumps(ot, ensure_ascii=False)};', html, flags=re.DOTALL)
-    html = re.sub(r'// 最后更新: .*', f'// 最后更新: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', html)
+    html = re.sub(r'// 最后更新: .*', f'// 最后更新: {bj_now().strftime("%Y-%m-%d %H:%M:%S")}', html)
 
     sp = os.path.join(SITE_DIR, 'index.html')
     with open(sp, 'w', encoding='utf-8') as f: f.write(html)
@@ -205,7 +208,7 @@ def main():
     today = dt.date.today(); ts = today.strftime('%Y-%m-%d')
 
     # 自愈：如果今天已经部署过，直接跳过
-    if False and already_deployed_today():
+    if already_deployed_today():
         print(f"===== {ts} 已部署，跳过 =====")
         return
 
