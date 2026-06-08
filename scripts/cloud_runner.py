@@ -196,7 +196,7 @@ def already_deployed_today():
     try:
         r = requests.get('https://raw.githubusercontent.com/zhong2yi/barry-quant/gh-pages/index.html', timeout=10)
         if r.status_code != 200: return False
-        m = re.search(r'"signal_date":"(\d{4}-\d{2}-\d{2})"', r.text)
+        m = re.search(r'signal_date.*?(\d{4}-\d{2}-\d{2})', r.text)
         if m:
             return m.group(1) == dt.date.today().strftime('%Y-%m-%d')
     except:
