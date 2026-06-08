@@ -180,7 +180,7 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
             except: pass
     nt = {"signal_date":ts[5:],"main_code":mn.get('code',''),"main_name":mn.get('name',''),
           "buy_price":mn.get('price',0),"sell_price":None,"current_price":mn.get('price',0)}
-    ot.append(nt); ot = ot[-10:]
+    ot.insert(0, nt); ot = ot[:10]
     html = re.sub(r'var EMBED_TRADES = \[.*?\];', f'var EMBED_TRADES = {json.dumps(ot, ensure_ascii=False)};', html, flags=re.DOTALL)
     html = re.sub(r'// 最后更新: .*', f'// 最后更新: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', html)
 
