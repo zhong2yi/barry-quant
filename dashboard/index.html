@@ -367,43 +367,13 @@ var EMBED_VER = {"passed":false,"conclusion":"谨慎 - 部分检查未通过","t
 var EMBED_TRADES = [{"signal_date":"05-29","main_code":"sh600203","main_name":"福日电子","buy_price":12.82,"sell_price":null,"current_price":null},{"signal_date":"06-01","main_code":"sh600255","main_name":"鑫科材料","buy_price":3.63,"sell_price":null,"current_price":null},{"signal_date":"06-02","main_code":"sh600018","main_name":"上港集团","buy_price":5.08,"sell_price":null,"current_price":null},{"signal_date":"06-04","main_code":"sh600023","main_name":"浙能电力","buy_price":6.12,"sell_price":null,"current_price":null},{"signal_date":"06-05","main_code":"sh603269","main_name":"海鸥股份","buy_price":21.61,"sell_price":null,"current_price":null}];
 
 function loadData() {
-  // Prefer fetch if served via HTTP, fall back to embedded data
-  if (window.location.protocol.startsWith('http')) {
-    // Try live JSON with 3s timeout, fall back to embedded
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    Promise.all([
-      fetch('latest_recommendation.json', {signal: controller.signal}).then(r => r.json()),
-      fetch('verification.json', {signal: controller.signal}).then(r => r.json()),
-      fetch('trade_log.json', {signal: controller.signal}).then(r => r.json())
-    ]).then(([rec, ver, trades]) => {
-      clearTimeout(timeout);
-      render(rec, ver, trades);
-    }).catch(() => {
-      clearTimeout(timeout);
-      render(EMBED_REC, EMBED_VER, EMBED_TRADES);
-    });
-  } else {
-    render(EMBED_REC, EMBED_VER, EMBED_TRADES);
-  }
+  // Always use embedded data (no JSON files on GitHub Pages)
+  render(EMBED_REC, EMBED_VER, EMBED_TRADES);
 }
 
-// Auto-refresh every 5 minutes
-var autoRefreshTimer;
+// Auto-refresh every 5 minutes (simple reload for GitHub Pages)
 function startAutoRefresh() {
-  autoRefreshTimer = setInterval(function() {
-    if (window.location.protocol.startsWith('http')) {
-      fetch('latest_recommendation.json', {cache: 'no-cache'}).then(function(r) {
-        return r.json();
-      }).then(function(rec) {
-        // If signal_date changed, full reload
-        var current = document.getElementById('headerDate');
-        if (current && rec.signal_date && current.textContent.indexOf(rec.signal_date) < 0) {
-          location.reload();
-        }
-      }).catch(function() {});
-    }
-  }, 300000); // 5 minutes
+  setInterval(function() { location.reload(); }, 300000);
 }
 
 function render(rec, ver, trades) {
@@ -420,7 +390,7 @@ function render(rec, ver, trades) {
   document.getElementById('headerDate').textContent =
     `信号日: ${rec.signal_date} | 买入日: ${rec.buy_date} | 卖出日: ${rec.sell_date}`;
   document.getElementById('updateTime').textContent = '📅 更新于 ' + (ver.time_display || '');
-  document.getElementById('lastUpdate').textContent = `数据生成: ${ts}`;
+  document.getElementById('lastUpdate').textContent = '数据生成: ' + (ver.timestamp || '');
 
   // Market state CSS class
   let msClass = 'market-green';
