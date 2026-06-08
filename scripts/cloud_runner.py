@@ -179,15 +179,32 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
     with open(sp, 'w', encoding='utf-8') as f: f.write(html)
     print(f"  看板: {sp}"); return True
 
+def already_deployed_today():
+    """检查线上是否已有今天的选股结果"""
+    try:
+        r = requests.get('https://raw.githubusercontent.com/zhong2yi/barry-quant/gh-pages/index.html', timeout=10)
+        if r.status_code != 200: return False
+        m = re.search(r'"signal_date":"(\d{4}-\d{2}-\d{2})"', r.text)
+        if m:
+            return m.group(1) == dt.date.today().strftime('%Y-%m-%d')
+    except:
+        pass
+    return False
+
 def main():
     st = time.time()
+    today = dt.date.today(); ts = today.strftime('%Y-%m-%d')
+
+    # 自愈：如果今天已经部署过，直接跳过
+    if already_deployed_today():
+        print(f"===== {ts} 已部署，跳过 =====")
+        return
+
     stocks = get_pool()
     if not stocks: return
     cands = screen(stocks)
     mkt = chk_market()
     ss = sig_strength(cands, mkt)
-
-    today = dt.date.today(); ts = today.strftime('%Y-%m-%d')
     sell = (today + dt.timedelta(days=HOLD+1)).strftime('%Y-%m-%d')
 
     print(f"\n[4/5] 结果:")
