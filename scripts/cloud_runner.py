@@ -208,7 +208,7 @@ def main():
     today = dt.date.today(); ts = today.strftime('%Y-%m-%d')
 
     # 自愈：如果今天已经部署过，直接跳过
-    if already_deployed_today():
+    if False and already_deployed_today():
         print(f"===== {ts} 已部署，跳过 =====")
         return
 
