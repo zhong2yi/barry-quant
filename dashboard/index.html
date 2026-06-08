@@ -604,7 +604,7 @@ function render(rec, ver, trades) {
           <th>买入</th>
           <th>现价</th>
         </tr>
-        ${trades.slice().reverse().slice(0, 10).map(function(t) {
+        ${trades.slice(0, 10).map(function(t) {
           var price = t.sell_price || t.current_price;
           var pct = price ? ((price / t.buy_price - 1) * 100) : null;
           var up = pct != null && pct > 0;
