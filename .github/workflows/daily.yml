@@ -2,9 +2,8 @@ name: Daily Stock Pick
 
 on:
   schedule:
-    # 北京时间 08:00-08:55 每5分钟 + 09:00 全量
-    - cron: '*/5 0 * * 1-5'
-    - cron: '0 1 * * 1-5'
+    # 北京时间 08:00-09:55 每5分钟（自愈：已部署则跳过）
+    - cron: '0-55/5 0,1 * * 1-5'
   workflow_dispatch:
 
 permissions:
