@@ -213,13 +213,14 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
     html = re.sub(r'var EMBED_REC = \{.*?\};', f'var EMBED_REC = {json.dumps(rec, ensure_ascii=False)};', html, flags=re.DOTALL)
     html = re.sub(r'var EMBED_VER = \{.*?\};', f'var EMBED_VER = {json.dumps(ver, ensure_ascii=False)};', html, flags=re.DOTALL)
 
-    # Trade: update current prices for active trades, add today, keep last 10
-    m = re.search(r'var EMBED_TRADES = (\[.*?\]);', html, flags=re.DOTALL)
+    # Trade: read persistent log, backfill current prices, add today
+    tlog_path = os.path.join(os.path.dirname(WORKSPACE), 'data', 'trade_log.json')
     ot = []
-    if m:
-        try: ot = json.loads(m.group(1))
+    if os.path.exists(tlog_path):
+        try:
+            with open(tlog_path, 'r', encoding='utf-8') as f: ot = json.load(f)
         except: ot = []
-    # Update current_price for active trades
+    # Backfill current prices for active trades
     for t in ot:
         if t.get('sell_price') is None and t.get('main_code'):
             try:
@@ -227,15 +228,35 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
                 if d is not None:
                     t['current_price'] = round(float(d[0][-1]), 2)
             except: pass
-    nt = {"signal_date":ts[5:],"main_code":mn.get('code',''),"main_name":mn.get('name',''),
-          "buy_price":mn.get('price',0),"sell_price":None,"current_price":mn.get('price',0)}
-    ot.insert(0, nt); ot = ot[:10]
-    html = re.sub(r'var EMBED_TRADES = \[.*?\];', f'var EMBED_TRADES = {json.dumps(ot, ensure_ascii=False)};', html, flags=re.DOTALL)
+
+    # Append today's trade
+    nt = {"signal_date":ts,"main_code":mn.get('code',''),"main_name":mn.get('name',''),
+          "buy_price":mn.get('price',0),"stop_loss":mn.get('stop_loss',0),
+          "sell_price":None,"result":None,"current_price":mn.get('price',0),
+          "sh_index_pct":mkt.get('sh_index_pct',0)}
+    # Avoid duplicate: check if today already exists
+    dup = any(t['signal_date']==ts and t['main_code']==nt['main_code'] for t in ot)
+    if not dup and nt['main_code']:
+        ot.insert(0, nt)
+
+    # Write back persistent log
+    os.makedirs(os.path.dirname(tlog_path), exist_ok=True)
+    with open(tlog_path, 'w', encoding='utf-8') as f:
+        json.dump(ot, f, ensure_ascii=False, indent=2)
+
+    # Convert to display format for HTML (MM-DD, last 10)
+    disp = [{"signal_date":t["signal_date"][5:] if len(t.get("signal_date",""))>5 else t["signal_date"],
+             "main_code":t.get("main_code",""),"main_name":t.get("main_name",""),
+             "buy_price":t.get("buy_price",0),"sell_price":t.get("sell_price"),
+             "current_price":t.get("current_price")} for t in ot[-10:]]
+    # Newest first for display
+    disp.reverse()
+    html = re.sub(r'var EMBED_TRADES = \[.*?\];', f'var EMBED_TRADES = {json.dumps(disp, ensure_ascii=False)};', html, flags=re.DOTALL)
     html = re.sub(r'// 最后更新: .*', f'// 最后更新: {bj_now().strftime("%Y-%m-%d %H:%M:%S")}', html)
 
     sp = os.path.join(SITE_DIR, 'index.html')
     with open(sp, 'w', encoding='utf-8') as f: f.write(html)
-    print(f"  看板: {sp}"); return True
+    print(f"  看板: {sp} | 交易记录: {len(ot)}笔"); return True
 
 def already_deployed_today():
     """检查线上是否已有今天的选股结果"""
