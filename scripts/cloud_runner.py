@@ -16,7 +16,6 @@ SITE_DIR = os.path.join(os.path.dirname(WORKSPACE), '_site')
 os.makedirs(SITE_DIR, exist_ok=True)
 
 T_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://gu.qq.com'}
-PROXY_STOCKS = ['sh600000', 'sh601398', 'sh601288', 'sh600028', 'sh601857']
 MA20_DEV = 1.5; VOL_RATIO = 0.8; SL = 0.92; HOLD = 5
 
 def get_pool():
@@ -83,25 +82,21 @@ def screen(stocks):
     print(f"  {len(res)} 只"); return res
 
 def chk_market():
-    print("[3/5] MA60(代理)...")
+    print("[3/5] MA60(上证指数)...")
     try:
-        pc = {}
-        for px in PROXY_STOCKS:
-            d = get_kl(px, 320)
-            if d is not None and len(d[0])>=60: pc[px] = d[0]
-        if len(pc) < 3: return _dm()
-        ml = min(len(c) for c in pc.values())
-        ix = sum(c[-ml:] for c in pc.values()) / len(pc)
-        m60 = float(np.mean(ix[-60:])); p = float(ix[-1])
+        d = get_kl('sh000001', 320)
+        if d is None or len(d[0])<60: return _dm()
+        c = d[0]; p = float(c[-1])
+        m60 = float(np.mean(c[-60:]))
         vs = (p/m60-1)*100; bd = 0
-        for i in range(len(ix)-1, max(0,len(ix)-90), -1):
-            if ix[i] < float(np.mean(ix[max(0,i-59):i+1])): bd += 1
+        for i in range(len(c)-1, max(0,len(c)-90), -1):
+            if c[i] < float(np.mean(c[max(0,i-59):i+1])): bd += 1
             else: break
         st = 'RED' if bd>3 else ('YELLOW' if bd>0 else 'GREEN')
         lb = ('弱势市' if st=='RED' else '谨慎' if st=='YELLOW' else '健康市') + f'（连续跌破MA60 {bd}天，偏离{vs:.1f}%）'
-        print(f"  代理:{p:.2f} MA60:{m60:.2f} {st} {bd}天")
-        return {'state':st,'label':lb,'below_days':bd,'vs_ma60':round(vs,1),'ma60':round(m60,2),
-                'sh_index_pct':round(float((ix[-1]/ix[-2]-1)*100),2) if len(ix)>1 else 0}
+        print(f"  上证:{p:.2f} MA60:{m60:.2f} {st} {bd}天")
+        sh_pct = round(float((c[-1]/c[-2]-1)*100),2) if len(c)>1 else 0
+        return {'state':st,'label':lb,'below_days':bd,'vs_ma60':round(vs,1),'ma60':round(m60,2),'sh_index_pct':sh_pct}
     except: return _dm()
 
 def _dm(): return {'state':'YELLOW','label':'评估失败','below_days':0,'vs_ma60':0,'ma60':0,'sh_index_pct':0}
