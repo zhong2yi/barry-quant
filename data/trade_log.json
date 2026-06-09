@@ -1,0 +1,62 @@
+[
+  {
+    "signal_date": "2026-05-29",
+    "main_code": "sh600203",
+    "main_name": "福日电子",
+    "buy_price": 12.82,
+    "stop_loss": 11.79,
+    "sell_price": null,
+    "result": null,
+    "sh_index_pct": -0.27
+  },
+  {
+    "signal_date": "2026-06-01",
+    "main_code": "sh600255",
+    "main_name": "鑫科材料",
+    "buy_price": 3.63,
+    "stop_loss": 3.34,
+    "sell_price": null,
+    "result": null,
+    "sh_index_pct": 0.43
+  },
+  {
+    "signal_date": "2026-06-02",
+    "main_code": "sh600018",
+    "main_name": "上港集团",
+    "buy_price": 5.08,
+    "stop_loss": 4.67,
+    "sell_price": null,
+    "result": null,
+    "sh_index_pct": null
+  },
+  {
+    "signal_date": "2026-06-03",
+    "main_code": "sh600323",
+    "main_name": "瀚蓝环境",
+    "buy_price": 30.45,
+    "stop_loss": 28.01,
+    "sell_price": null,
+    "result": null,
+    "sh_index_pct": -0.64
+  },
+  {
+    "signal_date": "2026-06-04",
+    "main_code": "sh600023",
+    "main_name": "浙能电力",
+    "buy_price": 6.12,
+    "stop_loss": 5.63,
+    "sell_price": null,
+    "result": null,
+    "sh_index_pct": 0.27
+  },
+  {
+    "signal_date": "2026-06-05",
+    "main_code": "sh600322",
+    "main_name": "津投城开",
+    "buy_price": 2.62,
+    "stop_loss": 2.41,
+    "sell_price": null,
+    "result": null,
+    "sh_index_pct": -1.7
+  }
+]
