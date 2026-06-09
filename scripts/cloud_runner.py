@@ -125,6 +125,57 @@ def sig_strength(cands, mkt):
     ac = '建议买入' if tot>=35 else ('谨慎买入' if tot>=25 else '建议观望')
     return {'level':lv,'action':ac,'score':tot,'max_score':45,'factors':fs}
 
+# 利空关键词（与 news_filter.py 一致）
+RED_KW = ['退市','ST','*ST','暴雷','立案调查','股权被冻结','信披违规','银行账户被冻结','违规担保','重大诉讼','被处罚','暂停上市','终止上市','破产']
+YELLOW_KW = ['减持','监管','问询','警示','异常波动','非理性炒作','偏离基本面','风险提示','业绩预亏','大幅下滑']
+def chk_news(code, name):
+    """新浪财经新闻快速检查"""
+    try:
+        cx = code[-6:] if len(code)>6 else code
+        u = f'https://vip.stock.finance.sina.com.cn/corp/go.php/vCB_AllNewsStock/symbol/{code[2:]}/p1.html'
+        r = requests.get(u, headers=T_HEADERS, timeout=8)
+        if r.status_code != 200: return 'UNKNOWN', [], []
+        text = r.text
+        reds = []; yellows = []
+        for kw in RED_KW:
+            if kw in text and name[:1] in text: reds.append(kw)
+        for kw in YELLOW_KW:
+            if kw in text and name[:1] in text: yellows.append(kw)
+        if reds: return 'RED', reds, yellows
+        if yellows: return 'YELLOW', [], yellows
+        return 'GREEN', [], []
+    except:
+        return 'UNKNOWN', [], []
+
+def news_filter(candidates):
+    """新闻过滤（基于新浪财经标题关键词）"""
+    print("[3/5] 新闻过滤...")
+    if not candidates: return candidates, _empty_news_detail([])
+    passed = []; filtered_out = []
+    for i, c in enumerate(candidates[:15]):  # 最多查15只
+        level, reds, yellows = chk_news(c['code'], c['name'])
+        if level == 'RED':
+            filtered_out.append({"code":c['code'],"name":c['name'],"reasons":reds})
+            print(f"  RED: {c['code']} {c['name']}: {reds}")
+        else:
+            if yellows:
+                c['news_risk'] = 'YELLOW'
+                c['news_reasons'] = yellows
+            passed.append(c)
+        if (i+1) % 5 == 0: time.sleep(0.5)
+    for c in candidates[15:]: passed.append(c)
+    print(f"  过滤: {len(filtered_out)}只 | 通过: {len(passed)}只")
+    return passed, {
+        "filtered_out": filtered_out,
+        "passed": [{"code":c['code'],"name":c['name'],"risk_level":c.get('news_risk','GREEN'),"reasons":c.get('news_reasons',[]),"red_hits":[],"yellow_hits":c.get('news_reasons',[])} for c in passed],
+        "total_checked": len(candidates), "total_red": len(filtered_out), "total_passed": len(passed)
+    }
+
+def _empty_news_detail(cands):
+    n = len(cands)
+    return {"filtered_out":[],"passed":[{"code":c['code'],"name":c['name'],"risk_level":"GREEN","reasons":[],"red_hits":[],"yellow_hits":[]} for c in cands],
+            "total_checked":n,"total_red":0,"total_passed":n}
+
 def gen(cands, mkt, ss, ts, bd, sd, nd=None):
     print("[5/5] 生成...")
     dash = os.path.join(os.path.dirname(WORKSPACE), 'dashboard')
@@ -215,6 +266,9 @@ def main():
     stocks = get_pool()
     if not stocks: return
     cands = screen(stocks)
+    print()
+    candidates_before = len(cands)
+    cands, nd = news_filter(cands)
     mkt = chk_market()
     ss = sig_strength(cands, mkt)
     sell = (today + dt.timedelta(days=HOLD+1)).strftime('%Y-%m-%d')
@@ -223,8 +277,8 @@ def main():
     if cands:
         for i, c in enumerate(cands[:3]):
             print(f"  #{i+1} {c['code']} {c['name']} ${c['price']} 评分{c['score']} RSI{c['rsi']} 量比{c['volume_ratio']}")
-    print(f"\n  市场: {mkt['label']}\n  信号: {ss['level']}")
-    gen(cands, mkt, ss, ts, ts, sell)
+    print(f"\n  过滤: {candidates_before}→{len(cands)}只\n  市场: {mkt['label']}\n  信号: {ss['level']}")
+    gen(cands, mkt, ss, ts, ts, sell, nd)
     print(f"\n===== 完成({time.time()-st:.0f}s) =====")
 
 if __name__ == '__main__': main()
