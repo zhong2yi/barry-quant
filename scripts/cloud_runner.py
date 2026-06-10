@@ -167,6 +167,45 @@ def enrich_fund_flow(cands):
         c.setdefault('fund_score', 0)
     return cands
 
+def enrich_alpha(cands):
+    """用Alpha158精选因子给候选股补充多维度评分"""
+    if not cands: return cands
+    try:
+        import numpy as np
+        from alpha_factors import compute
+    except ImportError:
+        for c in cands:
+            c['alpha_total'] = 0
+        return cands
+    
+    T_HEADERS = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://gu.qq.com'}
+    count = 0
+    for c in cands[:10]:  # 最多算Top10
+        try:
+            u = f'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={c["code"]},day,,,120,qfq&_var=kline_dayfq'
+            r = requests.get(u, headers=T_HEADERS, timeout=10)
+            js = json.loads(r.text[r.text.index('=')+1:])
+            ck = list(js['data'].keys())[0]
+            raw = js['data'][ck].get('qfqday') or js['data'][ck].get('day') or []
+            if len(raw) < 60: continue
+            
+            closes = np.array([float(x[2]) for x in raw])
+            highs = np.array([float(x[3]) for x in raw])
+            lows = np.array([float(x[4]) for x in raw])
+            volumes = np.array([float(x[5]) for x in raw])
+            
+            result = compute(closes, volumes, highs, lows)
+            c['alpha_total'] = result['total']
+            c['alpha_factors'] = result['factors']
+            count += 1
+        except: continue
+    
+    for c in cands:
+        c.setdefault('alpha_total', 0)
+    
+    print(f"  [Alpha158] 因子评分: {count}只")
+    return cands
+
 def sig_strength(cands, mkt):
     n = len(cands); fs = {}
     fs['c'] = {'score':10 if n>=5 else (5 if n>=2 else (3 if n>=1 else 0)),'label':f'候选{n}只'}
@@ -183,13 +222,17 @@ def sig_strength(cands, mkt):
         # 资金流向因子（新增）
         fund = cands[0].get('fund_score', 0)
         fs['f'] = {'score':fund,'label':f'资金{cands[0].get("fund_main","N/A"):.0f}' if isinstance(cands[0].get("fund_main"), (int,float)) else '资金N/A'}
+        # Alpha158因子评分（新增）
+        alpha = cands[0].get('alpha_total', 0)
+        fs['a'] = {'score':min(10, max(0, int(alpha/10)-3)),'label':f'Alpha{alpha:.0f}'}
     else:
         fs['r'] = {'score':0,'label':'NA'}
         fs['f'] = {'score':0,'label':'资金NA'}
+        fs['a'] = {'score':0,'label':'AlphaNA'}
     tot = sum(f['score'] for f in fs.values())
     lv = '强 ★★★' if tot>=35 else ('中等 ★★' if tot>=25 else '弱 ★')
     ac = '建议买入' if tot>=35 else ('谨慎买入' if tot>=25 else '建议观望')
-    return {'level':lv,'action':ac,'score':tot,'max_score':55,'factors':fs}
+    return {'level':lv,'action':ac,'score':tot,'max_score':65,'factors':fs}
 
 # 利空关键词（与 news_filter.py 一致）
 RED_KW = ['退市','ST','*ST','暴雷','立案调查','股权被冻结','信披违规','银行账户被冻结','违规担保','重大诉讼','被处罚','暂停上市','终止上市','破产']
@@ -370,6 +413,7 @@ def main():
     cands, nd = news_filter(cands)
     mkt = chk_market()
     cands = enrich_fund_flow(cands)  # AData资金流向补充
+    cands = enrich_alpha(cands)      # Alpha158因子评分
     ss = sig_strength(cands, mkt)
     barry = barry_scan(stocks)  # BARRY策略扫描
     sell = (today + dt.timedelta(days=HOLD+1)).strftime('%Y-%m-%d')
