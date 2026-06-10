@@ -12,7 +12,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 def bj_now(): return dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
 
 WORKSPACE = os.path.dirname(os.path.abspath(__file__))
-SITE_DIR = os.path.join(os.path.dirname(WORKSPACE), '_site')
+WS_ROOT = os.path.dirname(os.path.dirname(WORKSPACE))  # 项目根目录
+SITE_DIR = os.path.join(WS_ROOT, '_site')
 os.makedirs(SITE_DIR, exist_ok=True)
 
 T_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://gu.qq.com'}
@@ -65,6 +66,26 @@ def chk_one(code, name):
                 'rsi':round(float(r),1),'ma20':round(float(m20),2),'ma60':round(float(m60),2)}
     except: return None
 
+def barry_chk_one(code, name):
+    """BARRY策略（WB选财）：涨幅2~8%+量比>1.5+站MA20+RSI 40~65"""
+    try:
+        d = get_kl(code)
+        if d is None: return None
+        c, v = d
+        if len(c) < 3: return None
+        p = c[-1]; yest = c[-2]
+        pct = (p/yest - 1) * 100
+        if pct < 2 or pct > 8: return None
+        m20 = np.mean(c[-20:])
+        if p < m20: return None
+        vr = v[-1]/np.mean(v[-6:-1]) if np.mean(v[-6:-1])>0 else 1
+        if vr <= 1.5: return None
+        r = rsi(c)[-1]
+        if r < 40 or r > 65: return None
+        return {'code':code,'name':name,'price':round(float(p),2),'pct_chg':round(float(pct),2),
+                'volume_ratio':round(float(vr),2),'rsi':round(float(r),1),'valid':True}
+    except: return None
+
 def screen(stocks):
     print("[2/5] 扫描(20线程)...")
     res = []
@@ -80,6 +101,21 @@ def screen(stocks):
             except: pass
     res.sort(key=lambda x: -x['score'])
     print(f"  {len(res)} 只"); return res
+
+def barry_scan(stocks):
+    """BARRY策略扫描（涨幅2~8%+量比>1.5+站MA20+RSI 40~65）"""
+    print("[BARRY] 扫描(20线程)...")
+    res = []
+    with ThreadPoolExecutor(20) as pool:
+        fs = {pool.submit(barry_chk_one, s['code'], s['name']): s for s in stocks}
+        for f in as_completed(fs):
+            try:
+                r = f.result()
+                if r: res.append(r)
+            except: pass
+    res.sort(key=lambda x: -x['pct_chg'])
+    print(f"  {len(res)} 只")
+    return res[:3]  # 最多返回3只
 
 def chk_market():
     print("[3/5] MA60(上证指数)...")
@@ -101,6 +137,36 @@ def chk_market():
 
 def _dm(): return {'state':'YELLOW','label':'评估失败','below_days':0,'vs_ma60':0,'ma60':0,'sh_index_pct':0}
 
+def enrich_fund_flow(cands):
+    """用AData给候选股补充资金流向数据（可选，失败则跳过）"""
+    if not cands: return cands
+    try:
+        import adata
+        codes = [c['code'][-6:] for c in cands]
+        for code in codes[:15]:  # 最多查15只
+            try:
+                cf = adata.stock.market.get_capital_flow(stock_code=code)
+                if len(cf) == 0: continue
+                latest = cf.iloc[-1]
+                main_in = latest.get('main_net_inflow', 0)
+                # 找到对应candidate
+                for c in cands:
+                    if c['code'].endswith(code):
+                        c['fund_main'] = round(main_in, 0)
+                        # 主力净流入评分：正=加5分，大正=加10分，负=扣0分
+                        c['fund_score'] = 10 if main_in > 50000000 else (5 if main_in > 0 else 0)
+                        break
+            except: continue
+        print(f"  [AData] 资金流向: {len([c for c in cands if 'fund_score' in c])}只")
+    except ImportError:
+        pass  # 没有adata，跳过
+    except Exception as e:
+        print(f"  [AData] 跳过: {e}")
+    # 确保没有fund_score的候选也有默认值
+    for c in cands:
+        c.setdefault('fund_score', 0)
+    return cands
+
 def sig_strength(cands, mkt):
     n = len(cands); fs = {}
     fs['c'] = {'score':10 if n>=5 else (5 if n>=2 else (3 if n>=1 else 0)),'label':f'候选{n}只'}
@@ -114,11 +180,16 @@ def sig_strength(cands, mkt):
     if n>0:
         r = cands[0]['rsi']
         fs['r'] = {'score':10 if 30<=r<=50 else (5 if r<=65 else 3),'label':f'RSI={r}'}
-    else: fs['r'] = {'score':0,'label':'NA'}
+        # 资金流向因子（新增）
+        fund = cands[0].get('fund_score', 0)
+        fs['f'] = {'score':fund,'label':f'资金{cands[0].get("fund_main","N/A"):.0f}' if isinstance(cands[0].get("fund_main"), (int,float)) else '资金N/A'}
+    else:
+        fs['r'] = {'score':0,'label':'NA'}
+        fs['f'] = {'score':0,'label':'资金NA'}
     tot = sum(f['score'] for f in fs.values())
     lv = '强 ★★★' if tot>=35 else ('中等 ★★' if tot>=25 else '弱 ★')
     ac = '建议买入' if tot>=35 else ('谨慎买入' if tot>=25 else '建议观望')
-    return {'level':lv,'action':ac,'score':tot,'max_score':45,'factors':fs}
+    return {'level':lv,'action':ac,'score':tot,'max_score':55,'factors':fs}
 
 # 利空关键词（与 news_filter.py 一致）
 RED_KW = ['退市','ST','*ST','暴雷','立案调查','股权被冻结','信披违规','银行账户被冻结','违规担保','重大诉讼','被处罚','暂停上市','终止上市','破产']
@@ -171,22 +242,24 @@ def _empty_news_detail(cands):
     return {"filtered_out":[],"passed":[{"code":c['code'],"name":c['name'],"risk_level":"GREEN","reasons":[],"red_hits":[],"yellow_hits":[]} for c in cands],
             "total_checked":n,"total_red":0,"total_passed":n}
 
-def gen(cands, mkt, ss, ts, bd, sd, nd=None):
+def gen(cands, barry_cands, mkt, ss, ts, bd, sd, nd=None):
     print("[5/5] 生成...")
-    dash = os.path.join(os.path.dirname(WORKSPACE), 'dashboard')
+    dash = os.path.join(WS_ROOT, 'dashboard')
     tp = os.path.join(dash, 'index.html')
     if not os.path.exists(tp): return False
     with open(tp, encoding='utf-8') as f: html = f.read()
 
     mn = cands[0] if cands else {}
     bk = cands[1] if len(cands)>1 else {}
+    bc = barry_cands[0] if barry_cands else {}
+    barry_valid = bool(barry_cands) and bc.get('rsi', 0) < 65
 
     rec = {'signal_date':ts,'buy_date':bd,'sell_date':sd,'kline_latest':ts,
            'sh_index_pct':mkt.get('sh_index_pct',0),
            'generated_at':bj_now().strftime('%Y-%m-%d %H:%M:%S'),'complete':True,
            'main':mn,'main_backup':bk,
-           'barry':{'code':'','name':'暂无','price':0,'rsi':0,'pct_chg':0,'valid':False},
-           'barry_valid':False,'all_shrink':cands[:5],'all_barry':[]}
+           'barry':bc if bc else {'code':'','name':'暂无','price':0,'rsi':0,'pct_chg':0,'valid':False},
+           'barry_valid':barry_valid,'all_shrink':cands[:5],'all_barry':barry_cands}
 
     ver = {'passed':len(cands)>0,'conclusion':'推荐' if cands else '无推荐',
            'timestamp':bj_now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -196,13 +269,13 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
            'main_stock':mn.get('code',''),'main_name':mn.get('name',''),
            'main_price':mn.get('price',0),'main_score':mn.get('score',0),
            'main_rsi':mn.get('rsi',0),'main_backup':bk.get('code',''),
-           'barry_code':'','barry_valid':False,
+           'barry_code':bc.get('code',''),'barry_valid':barry_valid,
            'health':{'checklist':{'has_signal_date':True,'has_buy_date':True,'has_sell_date':True,
                'has_main':len(cands)>0,'has_sh_index_pct':True,'main_code':bool(mn.get('code')),
                'main_price':bool(mn.get('price')),'main_stop_loss':bool(mn.get('stop_loss')),
                'main_name':bool(mn.get('name')),'main_rsi':bool(mn.get('rsi')),
                'signal_is_kline_latest':True,'download_ratio':'N/A',
-               'barry_valid':False,'barry_rsi':0,'candidate_count':len(cands)},'issues':[],'passed':True},
+               'barry_valid':barry_valid,'barry_rsi':bc.get('rsi',0),'candidate_count':len(cands)},'issues':[],'passed':True},
            'news_filter':nd if nd else {'filtered_count':0,'replaced':False,'replacement':'',
                'detail':{'filtered_out':[],'passed':[],'scan_time':'','total_checked':len(cands),'total_red':0,'total_passed':len(cands)}},
            'signal_strength':ss,'market_state':mkt,
@@ -214,7 +287,7 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
     html = re.sub(r'var EMBED_VER = \{.*?\};', f'var EMBED_VER = {json.dumps(ver, ensure_ascii=False)};', html, flags=re.DOTALL)
 
     # Trade: read persistent log, backfill current prices, add today
-    tlog_path = os.path.join(os.path.dirname(WORKSPACE), 'data', 'trade_log.json')
+    tlog_path = os.path.join(WS_ROOT, 'data', 'trade_log.json')
     ot = []
     if os.path.exists(tlog_path):
         try:
@@ -239,12 +312,7 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
     if not dup and nt['main_code']:
         ot.insert(0, nt)
 
-    # Write back persistent log
-    os.makedirs(os.path.dirname(tlog_path), exist_ok=True)
-    with open(tlog_path, 'w', encoding='utf-8') as f:
-        json.dump(ot, f, ensure_ascii=False, indent=2)
-
-    # Convert to display format for HTML (MM-DD, last 10)
+    # Display: newest 10 trades for dashboard
     disp = [{"signal_date":t["signal_date"][5:] if len(t.get("signal_date",""))>5 else t["signal_date"],
              "main_code":t.get("main_code",""),"main_name":t.get("main_name",""),
              "buy_price":t.get("buy_price",0),"sell_price":t.get("sell_price"),
@@ -256,7 +324,19 @@ def gen(cands, mkt, ss, ts, bd, sd, nd=None):
 
     sp = os.path.join(SITE_DIR, 'index.html')
     with open(sp, 'w', encoding='utf-8') as f: f.write(html)
-    print(f"  看板: {sp} | 交易记录: {len(ot)}笔"); return True
+    print(f"  看板: {sp} | 交易记录: {len(ot)}笔")
+
+    # 同时输出 JSON（兼容统一入口的读取流程）
+    with open(os.path.join(WS_ROOT, 'latest_recommendation.json'), 'w', encoding='utf-8') as f:
+        json.dump(rec, f, ensure_ascii=False, indent=2)
+    with open(os.path.join(WS_ROOT, 'verification.json'), 'w', encoding='utf-8') as f:
+        json.dump(ver, f, ensure_ascii=False, indent=2)
+    print(f"  JSON → latest_recommendation.json | verification.json")
+
+    os.makedirs(os.path.dirname(tlog_path), exist_ok=True)
+    with open(tlog_path, 'w', encoding='utf-8') as f:
+        json.dump(ot, f, ensure_ascii=False, indent=2)
+    return True
 
 def already_deployed_today():
     """检查线上是否已有今天的选股结果"""
@@ -274,8 +354,11 @@ def main():
     st = time.time()
     today = dt.date.today(); ts = today.strftime('%Y-%m-%d')
 
-    # 自愈：如果今天已经部署过，直接跳过
-    if already_deployed_today():
+    # 自愈（仅GitHub Actions生效）：如果今天已经部署过，直接跳过
+    # 本地运行传 --force 永远跑
+    force = '--force' in sys.argv
+    is_ci = os.environ.get('GITHUB_ACTIONS') == 'true'
+    if not force and is_ci and already_deployed_today():
         print(f"===== {ts} 已部署，跳过 =====")
         return
 
@@ -286,15 +369,21 @@ def main():
     candidates_before = len(cands)
     cands, nd = news_filter(cands)
     mkt = chk_market()
+    cands = enrich_fund_flow(cands)  # AData资金流向补充
     ss = sig_strength(cands, mkt)
+    barry = barry_scan(stocks)  # BARRY策略扫描
     sell = (today + dt.timedelta(days=HOLD+1)).strftime('%Y-%m-%d')
 
     print(f"\n[4/5] 结果:")
     if cands:
         for i, c in enumerate(cands[:3]):
             print(f"  #{i+1} {c['code']} {c['name']} ${c['price']} 评分{c['score']} RSI{c['rsi']} 量比{c['volume_ratio']}")
+    if barry:
+        print(f"\n  BARRY策略参考:")
+        for b in barry:
+            print(f"    {b['code']} {b['name']} ${b['price']} 涨幅{b['pct_chg']:.1f}% RSI{b['rsi']} 量比{b['volume_ratio']}")
     print(f"\n  过滤: {candidates_before}→{len(cands)}只\n  市场: {mkt['label']}\n  信号: {ss['level']}")
-    gen(cands, mkt, ss, ts, ts, sell, nd)
+    gen(cands, barry, mkt, ss, ts, ts, sell, nd)
     print(f"\n===== 完成({time.time()-st:.0f}s) =====")
 
 if __name__ == '__main__': main()
