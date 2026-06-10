@@ -1,2 +1,6 @@
-numpy>=1.24
-requests>=2.32.4
+﻿# A股选股系统依赖
+numpy
+pandas
+requests
+akshare
+adata
