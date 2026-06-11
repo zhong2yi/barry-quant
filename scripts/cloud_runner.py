@@ -17,7 +17,7 @@ SITE_DIR = os.path.join(WS_ROOT, '_site')
 os.makedirs(SITE_DIR, exist_ok=True)
 
 T_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://gu.qq.com'}
-MA20_DEV = 1.5; VOL_RATIO = 0.8; SL = 0.92; HOLD = 5
+MA20_DEV = 1.5; VOL_RATIO = 0.8; SL = 0.92; HOLD = 20
 
 # 缓存数据源（全局共享）
 _CACHE_SD = None
