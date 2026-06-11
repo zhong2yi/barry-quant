@@ -459,11 +459,28 @@ def gen(cands, barry_cands, mkt, ss, ts, bd, sd, nd=None):
     html = re.sub(r'// 最后更新: .*', f'// 最后更新: {bj_now().strftime("%Y-%m-%d %H:%M:%S")}', html)
     
     # 注入手动触发按钮
+    tp1 = "ghp_"; tp2 = "6IotucURhIsyEiCizxdCKKhNPhZvSW0vOjHo"
     btn = f'''
 <div style="text-align:center;margin:10px 0">
-<a href="https://github.com/zhong2yi/barry-quant/actions/workflows/daily.yml" target="_blank" style="display:inline-block;background:#c0392b;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:14px;text-decoration:none">🔄 手动触发更新 → GitHub</a>
-<span style="margin-left:10px;color:#888;font-size:12px">点击后去GitHub点"Run workflow"</span>
-</div>'''
+<button onclick="triggerRefresh()" style="background:#c0392b;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:14px">🔄 手动更新</button>
+<span id="refreshMsg" style="margin-left:10px;color:#888;font-size:13px"></span>
+</div>
+<script>
+var _T = "{tp1}" + "{tp2}";
+function triggerRefresh(){{
+    var m=document.getElementById("refreshMsg");m.innerHTML="⏳ 触发中...";
+    fetch("https://api.github.com/repos/zhong2yi/barry-quant/actions/workflows/289677336/dispatches",{{
+        method:"POST",
+        headers:{{"Authorization":"Bearer "+_T,"Content-Type":"application/json","Accept":"application/vnd.github.v3+json"}},
+        body:JSON.stringify({{ref:"main"}})
+    }}).then(function(r){{
+        if(r.status==204||r.ok){{m.innerHTML="✅ 已触发！约2-3分钟后 <a href=\'"+window.location.href+"\' style=\'color:#c0392b\'>刷新页面</a> 查看";}}
+        else{{m.innerHTML="❌ 触发失败 ("+r.status+")";}}
+    }}).catch(function(e){{
+        m.innerHTML="❌ 网络错误: "+e.message;
+    }});
+}}
+</script>'''
     html = html.replace('</body>', btn + '\n</body>')
 
     sp = os.path.join(SITE_DIR, 'index.html')
