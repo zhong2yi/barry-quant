@@ -457,6 +457,14 @@ def gen(cands, barry_cands, mkt, ss, ts, bd, sd, nd=None):
     disp.reverse()
     html = re.sub(r'var EMBED_TRADES = \[.*?\];', f'var EMBED_TRADES = {json.dumps(disp, ensure_ascii=False)};', html, flags=re.DOTALL)
     html = re.sub(r'// 最后更新: .*', f'// 最后更新: {bj_now().strftime("%Y-%m-%d %H:%M:%S")}', html)
+    
+    # 注入手动触发按钮
+    btn = f'''
+<div style="text-align:center;margin:10px 0">
+<a href="https://github.com/zhong2yi/barry-quant/actions/workflows/daily.yml" target="_blank" style="display:inline-block;background:#c0392b;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:14px;text-decoration:none">🔄 手动触发更新 → GitHub</a>
+<span style="margin-left:10px;color:#888;font-size:12px">点击后去GitHub点"Run workflow"</span>
+</div>'''
+    html = html.replace('</body>', btn + '\n</body>')
 
     sp = os.path.join(SITE_DIR, 'index.html')
     with open(sp, 'w', encoding='utf-8') as f: f.write(html)
