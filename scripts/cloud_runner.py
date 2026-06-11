@@ -45,13 +45,19 @@ def get_kl(code, n=120):
     # 全局探测：仅第一次调用时尝试在线API
     if not hasattr(get_kl, '_online_ok'):
         try:
-            u = 'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh600007&scale=240&datalen=60'
-            r = requests.get(u, headers={'User-Agent':'Mozilla/5.0','Referer':'https://finance.sina.com.cn'}, timeout=3)
-            get_kl._online_ok = (r.status_code == 200 and len(r.text) > 50)
+            u1 = 'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh600007&scale=240&datalen=60'
+            r1 = requests.get(u1, headers={'User-Agent':'Mozilla/5.0','Referer':'https://finance.sina.com.cn'}, timeout=3)
+            get_kl._sina_ok = (r1.status_code == 200 and len(r1.text) > 50)
+            # 腾讯API也测试（用于指数等新浪不覆盖的）
+            u2 = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000001,day,,,60,qfq&_var=kline_dayfq'
+            r2 = requests.get(u2, headers=T_HEADERS, timeout=3)
+            get_kl._tencent_ok = ('kline_dayfq' in r2.text)
         except:
-            get_kl._online_ok = False
+            get_kl._sina_ok = False
+            get_kl._tencent_ok = False
     
-    if get_kl._online_ok:
+    # 优先在线API
+    if get_kl._sina_ok:
         try:
             u = f'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol={code}&scale=240&datalen={max(n, 120)}'
             r = requests.get(u, headers={'User-Agent':'Mozilla/5.0','Referer':'https://finance.sina.com.cn'}, timeout=5)
@@ -60,6 +66,18 @@ def get_kl(code, n=120):
                 if len(raw) >= 60:
                     return (np.array([float(x['close']) for x in raw], dtype=float),
                             np.array([float(x['volume']) for x in raw], dtype=float))
+        except: pass
+    
+    if get_kl._tencent_ok:
+        try:
+            u = f'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={code},day,,,{n},qfq&_var=kline_dayfq'
+            r = requests.get(u, headers=T_HEADERS, timeout=5)
+            if 'kline_dayfq' in r.text:
+                js = json.loads(r.text[r.text.index('=')+1:])
+                ck = list(js['data'].keys())[0]
+                raw = js['data'][ck].get('qfqday') or js['data'][ck].get('day') or []
+                if len(raw) >= 60:
+                    return np.array([float(x[2]) for x in raw]), np.array([float(x[5]) for x in raw])
         except: pass
     
     # 降级：缓存
@@ -471,9 +489,20 @@ def already_deployed_today():
 def main():
     st = time.time()
     today = dt.date.today()
-    # 用实际K线最新日期作为信号日（盘前=昨天，盘中=今天）
-    kd = get_latest_kl_date('sh600007')
-    kd = kd or today.strftime('%Y-%m-%d')
+    # 盘前(<12:00)或盘中未收盘用昨收，收盘后(≥15:00)用当日
+    now = bj_now()
+    if now.hour < 12 or (now.hour >= 15 and now.hour < 16):
+        # 盘前或用昨日数据
+        kd = (today - dt.timedelta(days=1)).strftime('%Y-%m-%d')
+        if today.weekday() == 0:  # 周一→上周五
+            kd = (today - dt.timedelta(days=3)).strftime('%Y-%m-%d')
+        elif today.weekday() == 6:  # 周日→上周五
+            kd = (today - dt.timedelta(days=2)).strftime('%Y-%m-%d')
+        if now.hour >= 15 and now.hour < 16:
+            # 收盘后(15:00~16:00)用当日数据
+            kd = today.strftime('%Y-%m-%d')
+    else:
+        kd = today.strftime('%Y-%m-%d')
     ts = kd
 
     # 自愈（仅GitHub Actions生效）：如果今天已经部署过，直接跳过
