@@ -19,6 +19,18 @@ os.makedirs(SITE_DIR, exist_ok=True)
 T_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://gu.qq.com'}
 MA20_DEV = 1.5; VOL_RATIO = 0.8; SL = 0.92; HOLD = 5
 
+# 缓存数据源（全局共享）
+_CACHE_SD = None
+def _load_cache():
+    global _CACHE_SD
+    if _CACHE_SD is not None: return
+    try:
+        import pickle
+        cp = os.path.join(WS_ROOT, 'backtest', 'cache', 'backtest_data.pkl')
+        with open(cp, 'rb') as f:
+            _CACHE_SD = pickle.load(f)['stock_data']
+    except: _CACHE_SD = {}
+
 def get_pool():
     print("[1/5] 股池...")
     f = os.path.join(WORKSPACE, 'stock_pool_min.json')
@@ -29,31 +41,49 @@ def get_pool():
     return []
 
 def get_kl(code, n=120):
-    """获取K线数据，依次尝试新浪→AData→腾讯"""
-    # 1. 新浪日K线（最快最稳）
-    try:
-        u = f'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol={code}&scale=240&datalen={max(n, 120)}'
-        r = requests.get(u, headers={'User-Agent':'Mozilla/5.0','Referer':'https://finance.sina.com.cn'}, timeout=8)
-        raw = json.loads(r.text)
-        if len(raw) >= 60:
-            closes = np.array([float(x['close']) for x in raw], dtype=float)
-            volumes = np.array([float(x['volume']) for x in raw], dtype=float)
-            return closes, volumes
-    except: pass
+    """获取K线数据，优先在线API（仅全局探测一次），失败则用缓存"""
+    # 全局探测：仅第一次调用时尝试在线API
+    if not hasattr(get_kl, '_online_ok'):
+        try:
+            u = 'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh600007&scale=240&datalen=60'
+            r = requests.get(u, headers={'User-Agent':'Mozilla/5.0','Referer':'https://finance.sina.com.cn'}, timeout=3)
+            get_kl._online_ok = (r.status_code == 200 and len(r.text) > 50)
+        except:
+            get_kl._online_ok = False
     
-    # 3. 腾讯API（最后手段）
-    try:
-        u = f'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={code},day,,,{n},qfq&_var=kline_dayfq'
-        r = requests.get(u, headers=T_HEADERS, timeout=5)
-        if 'kline_dayfq' not in r.text: return None
-        js = json.loads(r.text[r.text.index('=')+1:])
-        ck = list(js['data'].keys())[0]
-        raw = js['data'][ck].get('qfqday') or js['data'][ck].get('day') or []
-        if len(raw) >= 60:
-            return np.array([float(x[2]) for x in raw]), np.array([float(x[5]) for x in raw])
-    except: pass
+    if get_kl._online_ok:
+        try:
+            u = f'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol={code}&scale=240&datalen={max(n, 120)}'
+            r = requests.get(u, headers={'User-Agent':'Mozilla/5.0','Referer':'https://finance.sina.com.cn'}, timeout=5)
+            if r.status_code == 200 and len(r.text) > 50:
+                raw = json.loads(r.text)
+                if len(raw) >= 60:
+                    return (np.array([float(x['close']) for x in raw], dtype=float),
+                            np.array([float(x['volume']) for x in raw], dtype=float))
+        except: pass
     
-    return None
+    # 降级：缓存
+    try:
+        _load_cache()
+        sd = _CACHE_SD.get(code)
+        if sd is None:
+            alt = ('sh' + code[2:]) if code[:2] == 'sz' else ('sz' + code[2:])
+            sd = _CACHE_SD.get(alt)
+        if sd is None: return None
+        idx = min(n, len(sd['closes']))
+        closes = sd['closes'][-idx:].copy()
+        volumes = sd['volumes'][-idx:].copy()
+        # 新浪实时更新最新价
+        try:
+            u = f'https://hq.sinajs.cn/list={code}'
+            r = requests.get(u, headers={'Referer':'https://finance.sina.com.cn'}, timeout=2)
+            if r.status_code == 200:
+                parts = r.text.split('"')[1].split(',')
+                curr = float(parts[3]) if float(parts[3]) > 0 else (float(parts[2]) if float(parts[2]) > 0 else 0)
+                if curr > 0: closes[-1] = curr
+        except: pass
+        return np.array(closes, dtype=float), np.array(volumes, dtype=float)
+    except: return None
 
 def rsi(c, p=14):
     d = np.diff(c); g = np.where(d>0,d,0.0); l = np.where(d<0,-d,0.0)
@@ -136,9 +166,24 @@ def barry_scan(stocks):
 def chk_market():
     print("[3/5] MA60(上证指数)...")
     try:
+        # 先用实时API获取上证指数
+        try:
+            u = 'https://hq.sinajs.cn/list=sh000001'
+            r = requests.get(u, headers={'Referer':'https://finance.sina.com.cn'}, timeout=3)
+            if r.status_code == 200:
+                parts = r.text.split('"')[1].split(',')
+                p = float(parts[3]) if float(parts[3]) > 0 else float(parts[1])
+            else: p = 0
+        except: p = 0
+        
         d = get_kl('sh000001', 320)
-        if d is None or len(d[0])<60: return _dm()
-        c = d[0]; p = float(c[-1])
+        if d is None or len(d[0])<60:
+            if p > 0:
+                return {'state':'YELLOW','label':'仅实时价可用，无历史MA60','below_days':0,'vs_ma60':0,'ma60':p,'sh_index_pct':0}
+            return _dm()
+        c = d[0]; 
+        if p > 0: c[-1] = p  # 用实时价覆盖缓存价
+        p = float(c[-1])
         m60 = float(np.mean(c[-60:]))
         vs = (p/m60-1)*100; bd = 0
         for i in range(len(c)-1, max(0,len(c)-90), -1):
@@ -152,6 +197,24 @@ def chk_market():
     except: return _dm()
 
 def _dm(): return {'state':'YELLOW','label':'评估失败','below_days':0,'vs_ma60':0,'ma60':0,'sh_index_pct':0}
+
+def get_latest_kl_date(code='sh600007'):
+    """获取实际K线最新日期（用于信号日）"""
+    try:
+        u = f'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol={code}&scale=240&datalen=5'
+        r = requests.get(u, headers={'User-Agent':'Mozilla/5.0','Referer':'https://finance.sina.com.cn'}, timeout=5)
+        raw = json.loads(r.text)
+        if len(raw) > 0:
+            return raw[-1]['day'][:10]  # "2026-06-10"
+    except: pass
+    # 备用：用sh000001
+    try:
+        u = f'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh000001&scale=240&datalen=5'
+        r = requests.get(u, headers={'User-Agent':'Mozilla/5.0','Referer':'https://finance.sina.com.cn'}, timeout=5)
+        raw = json.loads(r.text)
+        if len(raw) > 0: return raw[-1]['day'][:10]
+    except: pass
+    return None
 
 def enrich_fund_flow(cands):
     """用AData给候选股补充资金流向数据（可选，失败则跳过）"""
@@ -407,7 +470,11 @@ def already_deployed_today():
 
 def main():
     st = time.time()
-    today = dt.date.today(); ts = today.strftime('%Y-%m-%d')
+    today = dt.date.today()
+    # 用实际K线最新日期作为信号日（盘前=昨天，盘中=今天）
+    kd = get_latest_kl_date('sh600007')
+    kd = kd or today.strftime('%Y-%m-%d')
+    ts = kd
 
     # 自愈（仅GitHub Actions生效）：如果今天已经部署过，直接跳过
     # 本地运行传 --force 永远跑
@@ -428,7 +495,7 @@ def main():
     cands = enrich_alpha(cands)      # Alpha158因子评分
     ss = sig_strength(cands, mkt)
     barry = barry_scan(stocks)  # BARRY策略扫描
-    sell = (today + dt.timedelta(days=HOLD+1)).strftime('%Y-%m-%d')
+    sell = (dt.datetime.strptime(ts, '%Y-%m-%d') + dt.timedelta(days=HOLD+1)).strftime('%Y-%m-%d')
 
     print(f"\n[4/5] 结果:")
     if cands:
