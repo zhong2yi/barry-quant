@@ -209,6 +209,28 @@ def chk_market():
 
 def _dm(): return {'state':'YELLOW','label':'评估失败','below_days':0,'vs_ma60':0,'ma60':0,'sh_index_pct':0}
 
+def chk_market_offline(cands):
+    """离线模式MA60估算：用候选股平均走势"""
+    print("[3/5] MA60(离线估算)...")
+    if not cands:
+        return {'state':'YELLOW','label':'离线模式-无数据','below_days':0,'vs_ma60':0,'ma60':0,'sh_index_pct':0}
+    try:
+        # 从mini cache取上证指数数据（如果有）
+        si = _from_mini_cache('sh000001')
+        if si and len(si['closes']) >= 60:
+            c = si['closes']
+            p = float(c[-1]); m60 = float(np.mean(c[-60:]))
+            vs = (p/m60-1)*100; bd = 0
+            for i in range(len(c)-1, max(0,len(c)-90), -1):
+                if c[i] < float(np.mean(c[max(0,i-59):i+1])): bd += 1
+                else: break
+            st = 'RED' if bd>3 else ('YELLOW' if bd>0 else 'GREEN')
+            lb = ('弱势市' if st=='RED' else '谨慎' if st=='YELLOW' else '健康市') + f'（离线缓存，连续跌破MA60 {bd}天，偏离{vs:.1f}%）'
+            print(f"  上证:缓存数据 MA60:{m60:.2f} {st} {bd}天")
+            return {'state':st,'label':lb,'below_days':bd,'vs_ma60':round(vs,1),'ma60':round(m60,2),'sh_index_pct':0}
+    except: pass
+    return {'state':'YELLOW','label':'离线模式','below_days':0,'vs_ma60':0,'ma60':0,'sh_index_pct':0}
+
 _MINI_CACHE = None
 def _from_mini_cache(code):
     """从内置迷你缓存读取K线数据（GitHub云端备用）"""
@@ -552,6 +574,11 @@ def already_deployed_today():
 
 def main():
     st = time.time()
+    offline = '--offline' in sys.argv
+    if offline:
+        print("  [离线模式] 跳过在线API")
+        get_kl._sina_ok = False
+        get_kl._tencent_ok = False
     today = dt.date.today()
     # 盘前(<12:00)或盘中未收盘用昨收，收盘后(≥15:00)用当日
     now = bj_now()
@@ -579,16 +606,23 @@ def main():
 
     stocks = get_pool()
     if not stocks: return
-    cands = screen(stocks)
+    cands = [c for c in cands] if isinstance(cands, set) else list(cands)
     print()
     candidates_before = len(cands)
-    cands, nd = news_filter(cands)
-    mkt = chk_market()
-    cands = enrich_fund_flow(cands)  # AData资金流向补充
-    cands = enrich_alpha(cands)      # Alpha158因子评分
-    cands = update_realtime_prices(cands)  # 批量更新实时价
+    
+    if not offline:
+        cands, nd = news_filter(cands)
+        mkt = chk_market()
+        cands = enrich_fund_flow(cands)
+        cands = enrich_alpha(cands)
+        cands = update_realtime_prices(cands)
+        barry = barry_scan(stocks)
+    else:
+        nd = _empty_news_detail(cands)
+        mkt = chk_market_offline(cands[:5])
+        barry = []
     ss = sig_strength(cands, mkt)
-    barry = barry_scan(stocks)  # BARRY策略扫描
+    if offline: barry = []
     sell = (dt.datetime.strptime(ts, '%Y-%m-%d') + dt.timedelta(days=HOLD+1)).strftime('%Y-%m-%d')
 
     print(f"\n[4/5] 结果:")
