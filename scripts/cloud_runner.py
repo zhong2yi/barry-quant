@@ -80,13 +80,15 @@ def get_kl(code, n=120):
                     return np.array([float(x[2]) for x in raw]), np.array([float(x[5]) for x in raw])
         except: pass
     
-    # 降级：缓存
+    # 降级：内置缓存 + 实时更新
     try:
         _load_cache()
         sd = _CACHE_SD.get(code)
         if sd is None:
-            alt = ('sh' + code[2:]) if code[:2] == 'sz' else ('sz' + code[2:])
+            alt = ('sh' + code[2:]) if code[:2] in ('sh','sz') else ('sz' + code[2:])
             sd = _CACHE_SD.get(alt)
+        if sd is None:
+            sd = _from_mini_cache(code)
         if sd is None: return None
         idx = min(n, len(sd['closes']))
         closes = sd['closes'][-idx:].copy()
@@ -215,6 +217,27 @@ def chk_market():
     except: return _dm()
 
 def _dm(): return {'state':'YELLOW','label':'评估失败','below_days':0,'vs_ma60':0,'ma60':0,'sh_index_pct':0}
+
+_MINI_CACHE = None
+def _from_mini_cache(code):
+    """从内置迷你缓存读取K线数据（GitHub云端备用）"""
+    global _MINI_CACHE
+    if _MINI_CACHE is None:
+        try:
+            import gzip, json
+            cp = os.path.join(WS_ROOT, 'dashboard', 'kline_cache.json.gz')
+            if os.path.exists(cp):
+                with gzip.open(cp, 'rt', encoding='utf-8') as f:
+                    _MINI_CACHE = json.load(f)
+        except: _MINI_CACHE = {}
+    if _MINI_CACHE:
+        d = _MINI_CACHE.get(code)
+        if d is None:
+            alt = ('sh' + code[2:]) if code[:2] in ('sh','sz') else ('sz' + code[2:])
+            d = _MINI_CACHE.get(alt)
+        if d:
+            return {'name':d['n'],'closes':np.array(d['c'],dtype=float),'volumes':np.array(d['v'],dtype=float)}
+    return None
 
 def get_latest_kl_date(code='sh600007'):
     """获取实际K线最新日期（用于信号日）"""
