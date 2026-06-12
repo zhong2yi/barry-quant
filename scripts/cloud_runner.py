@@ -606,7 +606,8 @@ def main():
 
     stocks = get_pool()
     if not stocks: return
-    cands = [c for c in cands] if isinstance(cands, set) else list(cands)
+    cands = screen(stocks)
+    cands = list(cands)
     print()
     candidates_before = len(cands)
     
