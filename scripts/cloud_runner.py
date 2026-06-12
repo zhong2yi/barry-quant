@@ -80,7 +80,7 @@ def get_kl(code, n=120):
                     return np.array([float(x[2]) for x in raw]), np.array([float(x[5]) for x in raw])
         except: pass
     
-    # 降级：内置缓存 + 实时更新
+    # 降级：内置缓存（不用实时更新，缓存数据够算MA/RSI）
     try:
         _load_cache()
         sd = _CACHE_SD.get(code)
@@ -93,15 +93,6 @@ def get_kl(code, n=120):
         idx = min(n, len(sd['closes']))
         closes = sd['closes'][-idx:].copy()
         volumes = sd['volumes'][-idx:].copy()
-        # 新浪实时更新最新价
-        try:
-            u = f'https://hq.sinajs.cn/list={code}'
-            r = requests.get(u, headers={'Referer':'https://finance.sina.com.cn'}, timeout=2)
-            if r.status_code == 200:
-                parts = r.text.split('"')[1].split(',')
-                curr = float(parts[3]) if float(parts[3]) > 0 else (float(parts[2]) if float(parts[2]) > 0 else 0)
-                if curr > 0: closes[-1] = curr
-        except: pass
         return np.array(closes, dtype=float), np.array(volumes, dtype=float)
     except: return None
 
@@ -320,6 +311,31 @@ def enrich_alpha(cands):
         c.setdefault('alpha_total', 0)
     
     print(f"  [Alpha158] 因子评分: {count}只")
+    return cands
+
+def update_realtime_prices(cands):
+    """用Sina实时行情批量更新候选股最新价"""
+    if not cands: return cands
+    try:
+        # 批量查询（最多100只一次，取Top10）
+        codes = [c['code'] for c in cands[:10]]
+        u = f'https://hq.sinajs.cn/list={",".join(codes)}'
+        r = requests.get(u, headers={'Referer':'https://finance.sina.com.cn'}, timeout=5)
+        if r.status_code != 200: return cands
+        lines = r.text.strip().split('\n')
+        for line in lines:
+            if '=' not in line: continue
+            c = line.split('=')[0][-8:]
+            parts = line.split('"')[1].split(',')
+            curr = float(parts[3]) if float(parts[3]) > 0 else (float(parts[2]) if float(parts[2]) > 0 else 0)
+            if curr > 0:
+                for cd in cands:
+                    if cd['code'].endswith(c):
+                        cd['price'] = round(curr, 2)
+                        break
+        up = sum(1 for c in cands if c.get('price',0) > 0)
+        if up: print(f"  [实时价] 更新{up}只")
+    except: pass
     return cands
 
 def sig_strength(cands, mkt):
@@ -570,6 +586,7 @@ def main():
     mkt = chk_market()
     cands = enrich_fund_flow(cands)  # AData资金流向补充
     cands = enrich_alpha(cands)      # Alpha158因子评分
+    cands = update_realtime_prices(cands)  # 批量更新实时价
     ss = sig_strength(cands, mkt)
     barry = barry_scan(stocks)  # BARRY策略扫描
     sell = (dt.datetime.strptime(ts, '%Y-%m-%d') + dt.timedelta(days=HOLD+1)).strftime('%Y-%m-%d')
