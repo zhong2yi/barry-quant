@@ -40,6 +40,23 @@ def get_pool():
         print(f"  {len(s)} 只"); return s
     return []
 
+# 在线抓取缓存（供末尾写回 backtest_data.pkl，实现"回测永远最新"）
+_FRESH = {}
+
+def _capture_fresh(code, dates, opens, highs, lows, closes, volumes):
+    """记录本次在线抓到的OHLCV，供末尾写回 backtest_data.pkl（追加新日期，保留旧历史）"""
+    try:
+        _FRESH[code] = {
+            'dates': [str(d).replace('-', '') for d in dates],
+            'opens': np.asarray(opens, dtype=float),
+            'highs': np.asarray(highs, dtype=float),
+            'lows': np.asarray(lows, dtype=float),
+            'closes': np.asarray(closes, dtype=float),
+            'volumes': np.asarray(volumes, dtype=float),
+        }
+    except:
+        pass
+
 def get_kl(code, n=120):
     """获取K线数据，优先在线API（仅全局探测一次），失败则用缓存"""
     # 全局探测：仅第一次调用时尝试在线API
@@ -64,8 +81,15 @@ def get_kl(code, n=120):
             if r.status_code == 200 and len(r.text) > 50:
                 raw = json.loads(r.text)
                 if len(raw) >= 60:
-                    return (np.array([float(x['close']) for x in raw], dtype=float),
-                            np.array([float(x['volume']) for x in raw], dtype=float))
+                    dates = [x['day'] for x in raw]
+                    opens = [x['open'] for x in raw]
+                    highs = [x['high'] for x in raw]
+                    lows = [x['low'] for x in raw]
+                    closes = [x['close'] for x in raw]
+                    volumes = [x['volume'] for x in raw]
+                    _capture_fresh(code, dates, opens, highs, lows, closes, volumes)
+                    return (np.array(closes, dtype=float),
+                            np.array(volumes, dtype=float))
         except: pass
     
     if get_kl._tencent_ok:
@@ -77,7 +101,14 @@ def get_kl(code, n=120):
                 ck = list(js['data'].keys())[0]
                 raw = js['data'][ck].get('qfqday') or js['data'][ck].get('day') or []
                 if len(raw) >= 60:
-                    return np.array([float(x[2]) for x in raw]), np.array([float(x[5]) for x in raw])
+                    dates = [x[0] for x in raw]
+                    opens = [x[1] for x in raw]
+                    highs = [x[3] for x in raw]
+                    lows = [x[4] for x in raw]
+                    closes = [x[2] for x in raw]
+                    volumes = [x[5] for x in raw]
+                    _capture_fresh(code, dates, opens, highs, lows, closes, volumes)
+                    return np.array(closes, dtype=float), np.array(volumes, dtype=float)
         except: pass
     
     # 降级：内置缓存（不用实时更新，缓存数据够算MA/RSI）
@@ -271,33 +302,41 @@ def get_latest_kl_date(code='sh600007'):
     return None
 
 def enrich_fund_flow(cands):
-    """用AData给候选股补充资金流向数据（可选，失败则跳过）"""
+    """资金面代理（沙箱无真实主力净流入源，用量价关系估算资金关注度）
+
+    说明：东方财富/新浪的资金流接口在沙箱均被限制（返回null或空），
+    AData库也无法安装。故改用候选股已有的K线衍生字段自算"资金关注度代理"：
+      - 量比(volume_ratio)：放量=资金活跃
+      - 偏离MA20(deviation)：站上均线=资金认可
+    该值仅供相对排序与信号强度评分，非真实主力净流入，已在字段标注 fund_proxy=True。
+    """
     if not cands: return cands
-    try:
-        import adata
-        codes = [c['code'][-6:] for c in cands]
-        for code in codes[:15]:  # 最多查15只
-            try:
-                cf = adata.stock.market.get_capital_flow(stock_code=code)
-                if len(cf) == 0: continue
-                latest = cf.iloc[-1]
-                main_in = latest.get('main_net_inflow', 0)
-                # 找到对应candidate
-                for c in cands:
-                    if c['code'].endswith(code):
-                        c['fund_main'] = round(main_in, 0)
-                        # 主力净流入评分：正=加5分，大正=加10分，负=扣0分
-                        c['fund_score'] = 10 if main_in > 50000000 else (5 if main_in > 0 else 0)
-                        break
-            except: continue
-        print(f"  [AData] 资金流向: {len([c for c in cands if 'fund_score' in c])}只")
-    except ImportError:
-        pass  # 没有adata，跳过
-    except Exception as e:
-        print(f"  [AData] 跳过: {e}")
-    # 确保没有fund_score的候选也有默认值
-    for c in cands:
+    for c in cands[:15]:
+        try:
+            vol = float(c.get('volume_ratio', 1.0) or 1.0)
+            dev = float(c.get('deviation', 0) or 0)
+            # 资金关注度代理评分
+            if vol >= 1.2 and dev > 0:
+                score = 10      # 放量且站上均线，资金流入迹象强
+            elif vol >= 1.0 and dev > 0:
+                score = 7
+            elif vol >= 0.9:
+                score = 5       # 量能平稳
+            else:
+                score = 0       # 缩量，资金观望
+            # 资金净额代理（万元，仅供排序，非真实主力净流入）
+            proxy = round((vol - 1) * 3000 * (1 if dev >= 0 else -1) + dev * 150, 0)
+            c['fund_score'] = score
+            c['fund_main'] = proxy
+            c['fund_proxy'] = True
+        except Exception:
+            c['fund_score'] = 0
+            c['fund_proxy'] = True
+    # 未覆盖的候选补默认
+    for c in cands[15:]:
         c.setdefault('fund_score', 0)
+        c.setdefault('fund_proxy', True)
+    print(f"  [资金代理] 量价估算: {len([c for c in cands if 'fund_score' in c])}只 (非真实主力净流入)")
     return cands
 
 def enrich_alpha(cands):
@@ -572,8 +611,115 @@ def already_deployed_today():
         pass
     return False
 
+def _rollmean(a, w):
+    """简单滚动均值（numpy实现，避免依赖pandas）"""
+    out = np.full(len(a), np.nan, dtype=float)
+    if len(a) >= w:
+        out[w-1:] = np.convolve(a, np.ones(w)/w, 'valid')
+    return out
+
+def _build_entry(name, merged):
+    """merged: dict date->(o,h,l,c,v)，按日期升序重建回测缓存条目"""
+    items = sorted(merged.items())
+    dates = np.array([k for k, _ in items], dtype=object)
+    opens = np.array([v[0] for _, v in items], dtype=float)
+    highs = np.array([v[1] for _, v in items], dtype=float)
+    lows = np.array([v[2] for _, v in items], dtype=float)
+    closes = np.array([v[3] for _, v in items], dtype=float)
+    vols = np.array([v[4] for _, v in items], dtype=float)
+    return {'name': name, 'dates': dates, 'opens': opens, 'highs': highs,
+            'lows': lows, 'closes': closes, 'volumes': vols,
+            'date_to_n': {d: i for i, d in enumerate(dates)}}
+
+def update_backtest_cache(fresh=None, path=None):
+    """把本次在线抓到的K线写回 backtest_data.pkl（追加新日期、保留旧历史）
+
+    设计要点：
+      - 旧历史（如320天）完整保留，仅追加本次新抓到的日期（如6/5~7/14）
+      - 重叠日期以本次在线数据为准（修正 stale 缓存里的旧值）
+      - 指数 sh000001 单独处理，重建其 OHLC + MA5/20/60
+      - 在线被封时 _FRESH 为空 → 跳过，不破坏缓存
+    """
+    global _FRESH
+    if fresh is None:
+        fresh = _FRESH
+    if not fresh:
+        print("  [缓存] 无在线数据，跳过刷新")
+        return
+    import pickle
+    cp = path or os.path.join(WS_ROOT, 'backtest', 'cache', 'backtest_data.pkl')
+    if os.path.exists(cp):
+        try:
+            with open(cp, 'rb') as f:
+                cache = pickle.load(f)
+        except Exception as e:
+            print(f"  [缓存] 读取失败: {e}，跳过")
+            return
+    else:
+        cache = {'trade_dates_all': [], 'index_data': {}, 'index_dates': [],
+                 'stock_data': {}, 'saved_at': '', 'stock_count': 0, 'date_range': ''}
+    sd = cache.setdefault('stock_data', {})
+    local = dict(fresh)
+    index_fresh = local.pop('sh000001', None)
+    updated = 0
+    for code, d in local.items():
+        dates = [str(x) for x in d['dates']]
+        opens, highs, lows, closes, vols = d['opens'], d['highs'], d['lows'], d['closes'], d['volumes']
+        merged = {}
+        if code in sd:
+            ex = sd[code]
+            for i, dt_ in enumerate(ex['dates']):
+                merged[str(dt_)] = (float(ex['opens'][i]), float(ex['highs'][i]),
+                                    float(ex['lows'][i]), float(ex['closes'][i]), float(ex['volumes'][i]))
+        for i, dt_ in enumerate(dates):
+            merged[dt_] = (float(opens[i]), float(highs[i]), float(lows[i]), float(closes[i]), float(vols[i]))
+        name = sd.get(code, {}).get('name', '') if code in sd else ''
+        sd[code] = _build_entry(name, merged)
+        updated += 1
+    # 指数
+    if index_fresh is not None:
+        idx = cache.setdefault('index_data', {})
+        mi = {}
+        for dt_, v in idx.items():
+            mi[str(dt_)] = (float(v.get('open', 0)), float(v.get('high', 0)),
+                            float(v.get('low', 0)), float(v.get('close', 0)), float(v.get('volume', 0)))
+        for i, dt_ in enumerate([str(x) for x in index_fresh['dates']]):
+            mi[dt_] = (float(index_fresh['opens'][i]), float(index_fresh['highs'][i]),
+                       float(index_fresh['lows'][i]), float(index_fresh['closes'][i]), float(index_fresh['volumes'][i]))
+        sdates = sorted(mi.keys())
+        closes_a = np.array([mi[d][3] for d in sdates], dtype=float)
+        ma5 = _rollmean(closes_a, 5); ma20 = _rollmean(closes_a, 20); ma60 = _rollmean(closes_a, 60)
+        new_idx = {}
+        for i, dt_ in enumerate(sdates):
+            o, h, l, c, vv = mi[dt_]
+            pct = (closes_a[i] - closes_a[i-1]) / closes_a[i-1] * 100 if i > 0 else 0.0
+            new_idx[dt_] = {'close': c, 'open': o, 'high': h, 'low': l, 'volume': vv, 'pct': pct,
+                            'ma5': ma5[i] if not np.isnan(ma5[i]) else 0.0,
+                            'ma20': ma20[i] if not np.isnan(ma20[i]) else 0.0,
+                            'ma60': ma60[i] if not np.isnan(ma60[i]) else 0.0}
+        cache['index_data'] = new_idx
+        cache['index_dates'] = sdates
+    # 数据范围（沿用原 pkl 约定：以指数日期为准）
+    if cache.get('index_dates'):
+        idates = cache['index_dates']
+        cache['date_range'] = f"{idates[0]} ~ {idates[-1]}"
+    else:
+        all_d = []
+        for e in sd.values():
+            if len(e['dates']):
+                all_d.append(str(e['dates'][0])); all_d.append(str(e['dates'][-1]))
+        if all_d:
+            cache['date_range'] = f"{min(all_d)} ~ {max(all_d)}"
+    cache['stock_count'] = len(sd)
+    cache['saved_at'] = bj_now().strftime('%Y-%m-%d %H:%M:%S')
+    os.makedirs(os.path.dirname(cp), exist_ok=True)
+    with open(cp, 'wb') as f:
+        pickle.dump(cache, f)
+    print(f"  [缓存] 已刷新: {updated}只股票 + 指数 | 数据范围 {cache['date_range']}")
+
 def main():
     st = time.time()
+    _FRESH.clear()
     offline = '--offline' in sys.argv
     if offline:
         print("  [离线模式] 跳过在线API")
@@ -636,6 +782,9 @@ def main():
             print(f"    {b['code']} {b['name']} ${b['price']} 涨幅{b['pct_chg']:.1f}% RSI{b['rsi']} 量比{b['volume_ratio']}")
     print(f"\n  过滤: {candidates_before}→{len(cands)}只\n  市场: {mkt['label']}\n  信号: {ss['level']}")
     gen(cands, barry, mkt, ss, ts, ts, sell, nd)
+    # [6/5] 刷新回测缓存：把本次在线抓到的K线写回 backtest_data.pkl
+    print("\n[6/5] 刷新回测缓存...")
+    update_backtest_cache()
     print(f"\n===== 完成({time.time()-st:.0f}s) =====")
 
 if __name__ == '__main__': main()
