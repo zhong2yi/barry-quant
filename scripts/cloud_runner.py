@@ -57,23 +57,83 @@ def _capture_fresh(code, dates, opens, highs, lows, closes, volumes):
     except:
         pass
 
-def get_kl(code, n=120):
-    """获取K线数据，优先在线API（仅全局探测一次），失败则用缓存"""
-    # 全局探测：仅第一次调用时尝试在线API
-    if not hasattr(get_kl, '_online_ok'):
+# ── Yahoo 批量预拉（云端数据源：GitHub Actions 海外节点可连）──
+_YH = {}  # code -> {'dates':[], 'opens':arr,'highs':arr,'lows':arr,'closes':arr,'volumes':arr}
+
+def _probe_online():
+    """探测新浪/腾讯是否可用（云端可能因地域连不上）"""
+    if hasattr(get_kl, '_online_ok'):
+        return
+    try:
+        u1 = 'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh600007&scale=240&datalen=60'
+        r1 = requests.get(u1, headers={'User-Agent':'Mozilla/5.0','Referer':'https://finance.sina.com.cn'}, timeout=5)
+        get_kl._sina_ok = (r1.status_code == 200 and len(r1.text) > 50)
+        u2 = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000001,day,,,60,qfq&_var=kline_dayfq'
+        r2 = requests.get(u2, headers=T_HEADERS, timeout=5)
+        get_kl._tencent_ok = ('kline_dayfq' in r2.text)
+    except:
+        get_kl._sina_ok = False
+        get_kl._tencent_ok = False
+    get_kl._online_ok = True
+
+def prefetch_yahoo(pool):
+    """云端用 Yahoo 批量预拉股池日线，存入 _YH（避免逐只调用触发限流）"""
+    try:
+        import yfinance as yf
+        import pandas as pd
+    except Exception as e:
+        print(f"  [Yahoo] 库不可用: {e}")
+        return
+    print(f"[0] Yahoo 批量预拉（云端数据源，{len(pool)}只）...")
+    batch = 80
+    ok = 0
+    for i in range(0, len(pool), batch):
+        grp = pool[i:i+batch]
+        syms = {p['code']: p['code'][2:] + ('.SS' if p['code'][:2]=='sh' else '.SZ') for p in grp}
         try:
-            u1 = 'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh600007&scale=240&datalen=60'
-            r1 = requests.get(u1, headers={'User-Agent':'Mozilla/5.0','Referer':'https://finance.sina.com.cn'}, timeout=3)
-            get_kl._sina_ok = (r1.status_code == 200 and len(r1.text) > 50)
-            # 腾讯API也测试（用于指数等新浪不覆盖的）
-            u2 = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000001,day,,,60,qfq&_var=kline_dayfq'
-            r2 = requests.get(u2, headers=T_HEADERS, timeout=3)
-            get_kl._tencent_ok = ('kline_dayfq' in r2.text)
+            df = yf.download(list(syms.values()), period='1y', interval='1d',
+                             progress=False, threads=False, group_by='ticker', auto_adjust=True)
+            if df is None or len(df) == 0:
+                continue
+            for code, sym in syms.items():
+                try:
+                    sub = df[sym] if isinstance(df.columns, pd.MultiIndex) else df
+                    close = sub['Close'].dropna()
+                    vol = sub['Volume'].dropna()
+                    if len(close) < 60:
+                        continue
+                    _YH[code] = {
+                        'dates': [d.strftime('%Y-%m-%d') for d in close.index],
+                        'opens': np.asarray(sub['Open'].values, float),
+                        'highs': np.asarray(sub['High'].values, float),
+                        'lows': np.asarray(sub['Low'].values, float),
+                        'closes': np.asarray(close.values, float),
+                        'volumes': np.asarray(vol.values, float),
+                    }
+                    ok += 1
+                except:
+                    continue
+        except Exception as e:
+            print(f"  批次 {i//batch+1} 失败: {type(e).__name__}: {str(e)[:50]}")
+        time.sleep(1.5)
+    print(f"  [Yahoo] 预拉完成: {ok} 只有效")
+
+def get_kl(code, n=120):
+    """获取K线数据：Yahoo(云端) > 新浪 > 腾讯 > 缓存"""
+    _probe_online()
+
+    # 优先 Yahoo 批量预拉数据（云端已预热；本地未预热则跳过）
+    if code in _YH:
+        try:
+            e = _YH[code]
+            idx = min(n, len(e['closes']))
+            _capture_fresh(code, e['dates'][-idx:], e['opens'][-idx:], e['highs'][-idx:],
+                           e['lows'][-idx:], e['closes'][-idx:], e['volumes'][-idx:])
+            return e['closes'][-idx:].copy(), e['volumes'][-idx:].copy()
         except:
-            get_kl._sina_ok = False
-            get_kl._tencent_ok = False
-    
-    # 优先在线API
+            pass
+
+    # 优先在线API（新浪/腾讯，本地通、云端通常不通）
     if get_kl._sina_ok:
         try:
             u = f'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol={code}&scale=240&datalen={max(n, 120)}'
@@ -752,6 +812,11 @@ def main():
 
     stocks = get_pool()
     if not stocks: return
+    # 探测国内源，云端不通则批量预热 Yahoo（海外节点可连）
+    _probe_online()
+    if not (get_kl._sina_ok or get_kl._tencent_ok):
+        print("⚠️ 国内行情源不通，启用 Yahoo 云端数据源")
+        prefetch_yahoo(stocks)
     cands = screen(stocks)
     cands = list(cands)
     print()
