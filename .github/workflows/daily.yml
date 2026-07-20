@@ -2,11 +2,15 @@ name: Daily Stock Pick
 
 on:
   schedule:
-    # 北京时间 08:00（主触发）
-    - cron: '0 0 * * 1-5'
-    # 北京时间 08:30（备用：若第一次被队列延迟或失败）
-    - cron: '30 0 * * 1-5'
+    # 北京时间 16:17（主：A股收盘后1h17m，UTC08:17=美东凌晨04:17空闲，避开整点高峰）
+    - cron: '17 8 * * 1-5'
+    # 北京时间 16:47（备用：同空闲窗口错峰30分，防单次排队/失败）
+    - cron: '47 8 * * 1-5'
   workflow_dispatch:
+
+concurrency:
+  group: daily-pick
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -32,6 +36,7 @@ jobs:
 
       - name: Run stock screener (内置重试3次)
         run: |
+          sleep $((RANDOM % 300))
           for i in 1 2 3; do
             echo "========== 选股尝试 $i/3 =========="
             if python scripts/cloud_runner.py; then
