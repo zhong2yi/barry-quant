@@ -34,6 +34,14 @@ jobs:
           pip install --upgrade pip -q
           pip install -r requirements.txt -q
 
+      - name: Ensure dashboard template
+        run: |
+          if [ ! -f dashboard/index.html ]; then
+            echo "WARNING: dashboard/index.html missing, restoring from git object"
+            git show HEAD:dashboard/index.html > dashboard/index.html
+          fi
+          ls -la dashboard/index.html
+
       - name: Run stock screener (内置重试3次)
         run: |
           sleep $((RANDOM % 300))
