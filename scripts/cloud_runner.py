@@ -12,7 +12,21 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 def bj_now(): return dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
 
 WORKSPACE = os.path.dirname(os.path.abspath(__file__))
-WS_ROOT = os.path.dirname(os.path.dirname(WORKSPACE))  # 项目根目录
+
+def _find_root():
+    """向上搜索含 dashboard/ + backtest/ 的目录作为项目根。
+    不依赖 cloud_runner.py 相对根的层级深度（本地2层 cloud_quant/scripts，CI 1层 scripts）。"""
+    cur = WORKSPACE
+    for _ in range(5):
+        if os.path.isdir(os.path.join(cur, 'dashboard')) and os.path.isdir(os.path.join(cur, 'backtest')):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    return WORKSPACE
+
+WS_ROOT = _find_root()
 SITE_DIR = os.path.join(WS_ROOT, '_site')
 os.makedirs(SITE_DIR, exist_ok=True)
 
