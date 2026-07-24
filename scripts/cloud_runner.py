@@ -14,11 +14,21 @@ def bj_now(): return dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
 WORKSPACE = os.path.dirname(os.path.abspath(__file__))
 
 def _find_root():
-    """向上搜索含 dashboard/ + backtest/ 的目录作为项目根。
-    不依赖 cloud_runner.py 相对根的层级深度（本地2层 cloud_quant/scripts，CI 1层 scripts）。"""
+    """向上搜索定位仓库根目录（不依赖 cloud_runner.py 相对根的层级深度）。
+    优先找 .git（checkout 必带），其次找含 dashboard/ 的目录。"""
+    # 1) 找 .git
     cur = WORKSPACE
-    for _ in range(5):
-        if os.path.isdir(os.path.join(cur, 'dashboard')) and os.path.isdir(os.path.join(cur, 'backtest')):
+    for _ in range(6):
+        if os.path.isdir(os.path.join(cur, '.git')):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    # 2) 兜底：找含 dashboard/ 的目录
+    cur = WORKSPACE
+    for _ in range(6):
+        if os.path.isdir(os.path.join(cur, 'dashboard')):
             return cur
         parent = os.path.dirname(cur)
         if parent == cur:
