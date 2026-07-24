@@ -538,12 +538,46 @@ def _empty_news_detail(cands):
     return {"filtered_out":[],"passed":[{"code":c['code'],"name":c['name'],"risk_level":"GREEN","reasons":[],"red_hits":[],"yellow_hits":[]} for c in cands],
             "total_checked":n,"total_red":0,"total_passed":n}
 
+def _fallback_html():
+    """模板缺失时的内联兜底页面：保留 REC/VER/TRADES 注入点，保证 Deploy 不被 skip。"""
+    return '''<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Barry 选股看板</title>
+<style>body{font-family:-apple-system,'Microsoft YaHei',sans-serif;max-width:760px;margin:20px auto;padding:0 16px;color:#222}h2{color:#c0392b}</style>
+</head><body>
+<h2>Barry 选股看板</h2>
+<p style="color:#888">当前为兜底页面（dashboard 模板在 CI 工作区缺失，已自动回退）。核心数据已注入下方脚本变量。</p>
+<script>var EMBED_REC = {};</script>
+<script>var EMBED_VER = {};</script>
+<script>var EMBED_TRADES = [];</script>
+// 最后更新: 1970-01-01 00:00:00
+</body></html>'''
+
 def gen(cands, barry_cands, mkt, ss, ts, bd, sd, nd=None):
     print("[5/5] 生成...")
-    dash = os.path.join(WS_ROOT, 'dashboard')
-    tp = os.path.join(dash, 'index.html')
-    if not os.path.exists(tp): return False
-    with open(tp, encoding='utf-8') as f: html = f.read()
+    # 调试：打印关键路径，便于 CI 定位模板缺失问题
+    print(f"  [debug] WS_ROOT={WS_ROOT} | cwd={os.getcwd()} | WORKSPACE={WORKSPACE}")
+    # 模板多候选路径探测（CI 工作区路径可能与本地不同）
+    tp_cands = [
+        os.path.join(WS_ROOT, 'dashboard', 'index.html'),
+        os.path.join(os.getcwd(), 'dashboard', 'index.html'),
+        os.path.join(WORKSPACE, '..', 'dashboard', 'index.html'),
+        os.path.join(WORKSPACE, 'dashboard', 'index.html'),
+    ]
+    tp = None
+    for c in tp_cands:
+        if os.path.exists(c):
+            tp = c
+            break
+    print(f"  [debug] dashboard 模板候选: " + " | ".join(tp_cands))
+    print(f"  [debug] 找到模板: {tp}")
+    if tp:
+        with open(tp, encoding='utf-8') as f: html = f.read()
+    else:
+        # 兜底：内联最小模板，保证 _site/index.html 永远生成（Deploy 不被 skip）
+        print("  [warn] dashboard 模板缺失，使用内联兜底模板")
+        html = _fallback_html()
 
     mn = cands[0] if cands else {}
     bk = cands[1] if len(cands)>1 else {}
