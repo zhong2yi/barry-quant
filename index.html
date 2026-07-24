@@ -47,17 +47,6 @@
   .header .brand span { color: #3b82f6; }
   .header .sub { font-size: 12px; color: var(--text-sub); margin-top: 3px; }
   .header .date { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
-  .update-time {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 4px 14px;
-    background: #eff6ff;
-    color: #3b82f6;
-    font-size: 13px;
-    font-weight: 600;
-    border-radius: 8px;
-    letter-spacing: 0.5px;
-  }
 
   .card {
     background: var(--card);
@@ -278,6 +267,7 @@
     cursor: pointer;
   }
   .refresh-btn:active { opacity: 0.8; }
+  .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .last-update { text-align: center; font-size: 10px; color: var(--text-dim); margin-top: 4px; }
 
   /* Password Gate */
@@ -341,31 +331,104 @@
 
 <div class="header">
   <div class="brand">黄董的<span>β</span>指标</div>
-  <div class="sub">量化选股</div>
+  <div class="sub">缩量回MA20 · 量化选股</div>
   <div class="date" id="headerDate"></div>
-  <div class="update-time" id="updateTime"></div>
 </div>
 
 <div id="app"><div class="loading">加载数据中...</div></div>
 
-<button class="refresh-btn" onclick="location.reload()">🔄 刷新数据</button>
+<button class="refresh-btn" id="btnTrigger" onclick="triggerCloudRun()">🔄 刷新数据</button>
 <div class="last-update" id="lastUpdate"></div>
+<div style="text-align:center;font-size:11px;color:var(--text-dim);padding:4px 0" id="autoRefreshNote">
+  ⏱ 每5分钟自动刷新 | 数据来源：今日标的
+</div>
 <div class="disclaimer">
-  仅供个人参考 · 不构成投资建议<br>止损 -8% | 持有5个交易日
+  仅供个人参考 · 不构成投资建议<br>策略：缩量回MA20 | 止损 -8% | 持有5个交易日
 </div>
 
 </div><!-- #mainContent -->
 
 <script>
 // ===== 内嵌数据 (由 run_before_recommend.py 自动更新) =====
-// 最后更新: 2026-07-20 10:41:58
-var EMBED_REC = {"signal_date": "2026-07-17", "buy_date": "2026-07-17", "sell_date": "2026-08-07", "kline_latest": "2026-07-17", "sh_index_pct": -2.38, "generated_at": "2026-07-20 10:41:48", "complete": true, "main": {"code": "sz003033", "name": "征和工业", "price": 63.76, "stop_loss": 57.01, "score": 60, "deviation": 0.96, "volume_ratio": 0.73, "rsi": 58.4, "ma20": 61.38, "ma60": 58.21, "fund_score": 0, "fund_main": -666.0, "fund_proxy": true, "alpha_total": 73.7, "alpha_factors": {"MA5_MA20": 10.0, "MA20_MA60": 10.0, "ROC10": 8.5, "VOL_TREND": 8.3, "RSI14": 6.0, "CCI": 9.7, "BIAS20": 7.1, "ATR": 4.7, "STDDEV": 3.9, "VRATIO": 4.2, "CMF": 5.0, "MACD": 10.0, "KDJ_K": 7.1}}, "main_backup": {}, "barry": {"code": "sh600280", "name": "中央商场", "price": 2.92, "pct_chg": 7.35, "volume_ratio": 3.02, "rsi": 62.6, "valid": true}, "barry_valid": true, "all_shrink": [{"code": "sz003033", "name": "征和工业", "price": 63.76, "stop_loss": 57.01, "score": 60, "deviation": 0.96, "volume_ratio": 0.73, "rsi": 58.4, "ma20": 61.38, "ma60": 58.21, "fund_score": 0, "fund_main": -666.0, "fund_proxy": true, "alpha_total": 73.7, "alpha_factors": {"MA5_MA20": 10.0, "MA20_MA60": 10.0, "ROC10": 8.5, "VOL_TREND": 8.3, "RSI14": 6.0, "CCI": 9.7, "BIAS20": 7.1, "ATR": 4.7, "STDDEV": 3.9, "VRATIO": 4.2, "CMF": 5.0, "MACD": 10.0, "KDJ_K": 7.1}}], "all_barry": [{"code": "sh600280", "name": "中央商场", "price": 2.92, "pct_chg": 7.35, "volume_ratio": 3.02, "rsi": 62.6, "valid": true}, {"code": "sh600021", "name": "上海电力", "price": 14.91, "pct_chg": 7.19, "volume_ratio": 2.93, "rsi": 51.6, "valid": true}, {"code": "sh600505", "name": "西昌电力", "price": 11.6, "pct_chg": 6.81, "volume_ratio": 3.55, "rsi": 59.4, "valid": true}]};
-var EMBED_VER = {"passed": true, "conclusion": "推荐", "timestamp": "2026-07-20 10:41:48", "time_display": "07月20日 10:41", "signal_date": "2026-07-17", "buy_date": "2026-07-17", "sell_date": "2026-08-07", "sh_index_pct": -2.38, "main_stock": "sz003033", "main_name": "征和工业", "main_price": 63.76, "main_score": 60, "main_rsi": 58.4, "main_backup": "", "barry_code": "sh600280", "barry_valid": true, "health": {"checklist": {"has_signal_date": true, "has_buy_date": true, "has_sell_date": true, "has_main": true, "has_sh_index_pct": true, "main_code": true, "main_price": true, "main_stop_loss": true, "main_name": true, "main_rsi": true, "signal_is_kline_latest": true, "download_ratio": "N/A", "barry_valid": true, "barry_rsi": 62.6, "candidate_count": 1}, "issues": [], "passed": true}, "news_filter": {"filtered_out": [], "passed": [{"code": "sz003033", "name": "征和工业", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}], "total_checked": 1, "total_red": 0, "total_passed": 1}, "signal_strength": {"level": "中等 ★★", "action": "谨慎买入", "score": 27, "max_score": 65, "factors": {"c": {"score": 3, "label": "候选1只"}, "s": {"score": 10, "label": "中等"}, "m": {"score": 5, "label": "上证-2.4%"}, "r": {"score": 5, "label": "RSI=58.4"}, "f": {"score": 0, "label": "资金-666"}, "a": {"score": 4, "label": "Alpha74"}}}, "market_state": {"state": "RED", "label": "弱势市（连续跌破MA60 12天，偏离-7.0%）", "below_days": 12, "vs_ma60": -7.0, "ma60": 4076.2, "sh_index_pct": -2.38}, "checklist": {"K线最新日期=信号日": true, "脚本完成标记": true, "JSON数据完整": true, "新闻过滤通过": true, "主推RSI正常(<75)": true, "BARRY未超买(RSI<65)": true, "信号强度": "中等 ★★", "MA60市场状态": "弱势市（连续跌破MA60 12天，偏离-7.0%）"}};
-var EMBED_TRADES = [{"signal_date": "06-10", "main_code": "sz002387", "main_name": "维信诺", "buy_price": 8.34, "sell_price": null, "current_price": 6.29}, {"signal_date": "06-10", "main_code": "sz000988", "main_name": "华工科技", "buy_price": 153.0, "sell_price": null, "current_price": 117.62}, {"signal_date": "06-10", "main_code": "sz001301", "main_name": "尚太科技", "buy_price": 87.8, "sell_price": null, "current_price": 49.65}, {"signal_date": "06-11", "main_code": "sz002387", "main_name": "维信诺", "buy_price": 8.52, "sell_price": null, "current_price": 6.29}, {"signal_date": "06-11", "main_code": "sz002647", "main_name": "仁东控股", "buy_price": 12.32, "sell_price": null, "current_price": 9.08}, {"signal_date": "06-11", "main_code": "sz000837", "main_name": "秦川机床", "buy_price": 12.26, "sell_price": null, "current_price": 8.93}, {"signal_date": "06-11", "main_code": "sz000692", "main_name": "惠天热电", "buy_price": 5.08, "sell_price": null, "current_price": 3.69}, {"signal_date": "06-19", "main_code": "sz000783", "main_name": "长江证券", "buy_price": 7.82, "sell_price": null, "current_price": 8.34}, {"signal_date": "06-22", "main_code": "sh603681", "main_name": "永冠新材", "buy_price": 24.1, "sell_price": null, "current_price": 17.73}, {"signal_date": "06-23", "main_code": "sz002301", "main_name": "齐心集团", "buy_price": 7.79, "sell_price": null, "current_price": 7.77}];
+// 最后更新: 2026-07-24 08:54:20
+var EMBED_REC = {"signal_date": "2026-07-23", "buy_date": "2026-07-23", "sell_date": "2026-08-13", "kline_latest": "2026-07-23", "sh_index_pct": 0.25, "generated_at": "2026-07-24 08:54:15", "complete": true, "main": {"code": "sz000623", "name": "吉林敖东", "price": 18.31, "stop_loss": 16.85, "score": 70, "deviation": 0.79, "volume_ratio": 0.64, "rsi": 48.0, "ma20": 18.17, "ma60": 17.92, "fund_score": 0, "fund_main": -962.0, "fund_proxy": true, "alpha_total": 0}, "main_backup": {"code": "sh601878", "name": "浙商证券", "price": 9.67, "stop_loss": 8.9, "score": 70, "deviation": 0.51, "volume_ratio": 0.76, "rsi": 46.4, "ma20": 9.62, "ma60": 9.55, "fund_score": 0, "fund_main": -644.0, "fund_proxy": true, "alpha_total": 0}, "barry": {"code": "sz002278", "name": "神开股份", "price": 7.72, "pct_chg": 7.52, "volume_ratio": 2.45, "rsi": 45.1, "valid": true}, "barry_valid": true, "all_shrink": [{"code": "sz000623", "name": "吉林敖东", "price": 18.31, "stop_loss": 16.85, "score": 70, "deviation": 0.79, "volume_ratio": 0.64, "rsi": 48.0, "ma20": 18.17, "ma60": 17.92, "fund_score": 0, "fund_main": -962.0, "fund_proxy": true, "alpha_total": 0}, {"code": "sh601878", "name": "浙商证券", "price": 9.67, "stop_loss": 8.9, "score": 70, "deviation": 0.51, "volume_ratio": 0.76, "rsi": 46.4, "ma20": 9.62, "ma60": 9.55, "fund_score": 0, "fund_main": -644.0, "fund_proxy": true, "alpha_total": 0}, {"code": "sz002500", "name": "山西证券", "price": 5.38, "stop_loss": 4.95, "score": 60, "deviation": 1.14, "volume_ratio": 0.66, "rsi": 50.0, "ma20": 5.32, "ma60": 5.31, "fund_score": 0, "fund_main": -849.0, "fund_proxy": true, "alpha_total": 0}, {"code": "sh600196", "name": "复星医药", "price": 23.71, "stop_loss": 21.81, "score": 60, "deviation": 1.19, "volume_ratio": 0.53, "rsi": 53.1, "ma20": 23.43, "ma60": 23.35, "fund_score": 0, "fund_main": -1232.0, "fund_proxy": true, "alpha_total": 0}, {"code": "sh600998", "name": "九州通", "price": 5.06, "stop_loss": 4.66, "score": 60, "deviation": 1.46, "volume_ratio": 0.6, "rsi": 56.7, "ma20": 4.99, "ma60": 4.93, "fund_score": 0, "fund_main": -981.0, "fund_proxy": true, "alpha_total": 0}], "all_barry": [{"code": "sz002278", "name": "神开股份", "price": 7.72, "pct_chg": 7.52, "volume_ratio": 2.45, "rsi": 45.1, "valid": true}, {"code": "sz002458", "name": "益生股份", "price": 9.25, "pct_chg": 7.43, "volume_ratio": 2.14, "rsi": 52.3, "valid": true}, {"code": "sh601218", "name": "吉鑫科技", "price": 4.26, "pct_chg": 7.3, "volume_ratio": 1.97, "rsi": 43.7, "valid": true}]};
+var EMBED_VER = {"passed": true, "conclusion": "推荐", "timestamp": "2026-07-24 08:54:15", "time_display": "07月24日 08:54", "signal_date": "2026-07-23", "buy_date": "2026-07-23", "sell_date": "2026-08-13", "sh_index_pct": 0.25, "main_stock": "sz000623", "main_name": "吉林敖东", "main_price": 18.31, "main_score": 70, "main_rsi": 48.0, "main_backup": "sh601878", "barry_code": "sz002278", "barry_valid": true, "health": {"checklist": {"has_signal_date": true, "has_buy_date": true, "has_sell_date": true, "has_main": true, "has_sh_index_pct": true, "main_code": true, "main_price": true, "main_stop_loss": true, "main_name": true, "main_rsi": true, "signal_is_kline_latest": true, "download_ratio": "N/A", "barry_valid": true, "barry_rsi": 45.1, "candidate_count": 27}, "issues": [], "passed": true}, "news_filter": {"filtered_out": [{"code": "sz002020", "name": "京新药业", "reasons": ["ST"]}, {"code": "sz002550", "name": "千红制药", "reasons": ["ST"]}, {"code": "sh600177", "name": "XD雅戈尔", "reasons": ["ST"]}, {"code": "sh600276", "name": "恒瑞医药", "reasons": ["ST"]}, {"code": "sh601059", "name": "信达证券", "reasons": ["ST"]}, {"code": "sh601375", "name": "中原证券", "reasons": ["ST"]}], "passed": [{"code": "sz000623", "name": "吉林敖东", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh601878", "name": "浙商证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sz002500", "name": "山西证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh600196", "name": "复星医药", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh600998", "name": "九州通", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh601162", "name": "天风证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh603456", "name": "九洲药业", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh605008", "name": "长鸿高科", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sz000728", "name": "国元证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sz000776", "name": "广发证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sz002675", "name": "东诚药业", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sz002821", "name": "凯莱英", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh600061", "name": "国投资本", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh600369", "name": "西南证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh600906", "name": "财达证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh601555", "name": "东吴证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh601688", "name": "华泰证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh601788", "name": "光大证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh601881", "name": "中国银河", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh601901", "name": "方正证券", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh603225", "name": "新凤鸣", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh603980", "name": "吉华集团", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh605007", "name": "五洲特纸", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh600593", "name": "大连圣亚", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh601995", "name": "中金公司", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh603268", "name": "松发股份", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}, {"code": "sh605377", "name": "华旺科技", "risk_level": "GREEN", "reasons": [], "red_hits": [], "yellow_hits": []}], "total_checked": 33, "total_red": 6, "total_passed": 27}, "signal_strength": {"level": "强 ★★★", "action": "建议买入", "score": 40, "max_score": 65, "factors": {"c": {"score": 10, "label": "候选27只"}, "s": {"score": 15, "label": "高分"}, "m": {"score": 5, "label": "上证+0.2%"}, "r": {"score": 10, "label": "RSI=48.0"}, "f": {"score": 0, "label": "资金-962"}, "a": {"score": 0, "label": "Alpha0"}}}, "market_state": {"state": "RED", "label": "弱势市（连续跌破MA60 16天，偏离-4.5%）", "below_days": 16, "vs_ma60": -4.5, "ma60": 4059.78, "sh_index_pct": 0.25}, "checklist": {"K线最新日期=信号日": true, "脚本完成标记": true, "JSON数据完整": true, "新闻过滤通过": true, "主推RSI正常(<75)": true, "BARRY未超买(RSI<65)": true, "信号强度": "强 ★★★", "MA60市场状态": "弱势市（连续跌破MA60 16天，偏离-4.5%）"}};
+var EMBED_TRADES = [{"signal_date": "06-05", "main_code": "sh600322", "main_name": "津投城开", "buy_price": 2.62, "sell_price": null, "current_price": 2.56}, {"signal_date": "06-04", "main_code": "sh600023", "main_name": "浙能电力", "buy_price": 6.12, "sell_price": null, "current_price": 5.45}, {"signal_date": "06-03", "main_code": "sh600323", "main_name": "瀚蓝环境", "buy_price": 30.45, "sell_price": null, "current_price": 30.2}, {"signal_date": "06-02", "main_code": "sh600018", "main_name": "上港集团", "buy_price": 5.08, "sell_price": null, "current_price": 5.18}, {"signal_date": "06-01", "main_code": "sh600255", "main_name": "鑫科材料", "buy_price": 3.63, "sell_price": null, "current_price": 3.1}, {"signal_date": "05-29", "main_code": "sh600203", "main_name": "福日电子", "buy_price": 12.82, "sell_price": null, "current_price": 9.36}, {"signal_date": "06-09", "main_code": "sz000988", "main_name": "华工科技", "buy_price": 155.3, "sell_price": null, "current_price": 111.91}, {"signal_date": "07-23", "main_code": "sz000623", "main_name": "吉林敖东", "buy_price": 18.31, "sell_price": null, "current_price": 18.31}];
+
+function triggerCloudRun() {
+  const btn = document.getElementById('btnTrigger');
+  const note = document.getElementById('autoRefreshNote');
+  btn.disabled = true;
+  btn.textContent = '⏳ 正在触发云端更新...';
+  note.textContent = '🚀 已向GitHub发送运行指令，预计1-2分钟后完成，请稍候...';
+
+  // Call Cloudflare Worker to trigger GitHub Actions
+  // WORKER_URL will be set after deploying the worker
+  const WORKER_URL = 'https://barry-stock-trigger.your-subdomain.workers.dev/trigger';
+
+  fetch(WORKER_URL, { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.success) {
+        btn.textContent = '✅ 已触发，等待更新...';
+        note.innerHTML = '✅ 云端已收到指令！<br>请等待1-2分钟，然后点击"🔄 已触发，等待更新..."按钮刷新页面';
+        // Auto-reload after 90 seconds
+        setTimeout(function() {
+          btn.textContent = '🔄 点击刷新页面';
+          btn.disabled = false;
+          btn.onclick = function() { location.reload(); };
+        }, 90000);
+      } else {
+        throw new Error(data.error || '触发失败');
+      }
+    })
+    .catch(function(err) {
+      // CORS or network error - show manual instruction
+      btn.textContent = '⚠️ 无法自动触发';
+      btn.disabled = false;
+      note.innerHTML = '⚠️ 自动触发失败，请手动点击下方链接：<br>' +
+        '<a href="https://github.com/zhong2yi/barry-quant/actions" target="_blank" style="color:#3b82f6">打开GitHub Actions → 点击"Run workflow"</a>';
+    });
+}
 
 function loadData() {
-  // Always use embedded data (no JSON files on GitHub Pages)
-  render(EMBED_REC, EMBED_VER, EMBED_TRADES);
+  // Prefer fetch if served via HTTP, fall back to embedded data
+  if (window.location.protocol.startsWith('http')) {
+    // Try live JSON with 3s timeout, fall back to embedded
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    Promise.all([
+      fetch('latest_recommendation.json', {signal: controller.signal}).then(r => r.json()),
+      fetch('verification.json', {signal: controller.signal}).then(r => r.json()),
+      fetch('trade_log.json', {signal: controller.signal}).then(r => r.json())
+    ]).then(([rec, ver, trades]) => {
+      clearTimeout(timeout);
+      render(rec, ver, trades);
+    }).catch(() => {
+      clearTimeout(timeout);
+      render(EMBED_REC, EMBED_VER, EMBED_TRADES);
+    });
+  } else {
+    render(EMBED_REC, EMBED_VER, EMBED_TRADES);
+  }
+}
+
+// Auto-refresh every 5 minutes
+var autoRefreshTimer;
+function startAutoRefresh() {
+  autoRefreshTimer = setInterval(function() {
+    if (window.location.protocol.startsWith('http')) {
+      fetch('latest_recommendation.json', {cache: 'no-cache'}).then(function(r) {
+        return r.json();
+      }).then(function(rec) {
+        // If signal_date changed, full reload
+        var current = document.getElementById('headerDate');
+        if (current && rec.signal_date && current.textContent.indexOf(rec.signal_date) < 0) {
+          location.reload();
+        }
+      }).catch(function() {});
+    }
+  }, 300000); // 5 minutes
 }
 
 function render(rec, ver, trades) {
@@ -381,8 +444,7 @@ function render(rec, ver, trades) {
   // Update header
   document.getElementById('headerDate').textContent =
     `信号日: ${rec.signal_date} | 买入日: ${rec.buy_date} | 卖出日: ${rec.sell_date}`;
-  document.getElementById('updateTime').textContent = '📅 更新于 ' + (ver.time_display || '');
-  document.getElementById('lastUpdate').textContent = '数据生成: ' + (ver.timestamp || '');
+  document.getElementById('lastUpdate').textContent = `数据生成: ${ver.timestamp || rec.generated_at}`;
 
   // Market state CSS class
   let msClass = 'market-green';
@@ -398,13 +460,16 @@ function render(rec, ver, trades) {
   if (ssPct >= 70) ssClass = 'strong';
   else if (ssPct < 40) ssClass = 'weak';
 
-  // Trade stats: only completed trades (sell_price != null) count
-  var completedTrades = trades.filter(function(t) { return t.sell_price != null; });
-  var wins = completedTrades.filter(function(t) { return t.sell_price > t.buy_price; }).length;
-  var winRate = completedTrades.length > 0 ? Math.round(wins / completedTrades.length * 100) : 0;
-  var totalReturn = 0;
-  completedTrades.forEach(function(t) {
-    totalReturn += (t.sell_price / t.buy_price - 1) * 100;
+  // Trade stats
+  const doneTrades = trades.filter(t => t.result === 'win' || t.result === 'loss');
+  const wins = doneTrades.filter(t => t.result === 'win').length;
+  const total = doneTrades.length;
+  const winRate = total > 0 ? Math.round(wins / total * 100) : 0;
+
+  // Total return
+  let totalReturn = 0;
+  doneTrades.forEach(t => {
+    if (t.return_pct != null) totalReturn += t.return_pct;
   });
 
   // Build filtered list
@@ -439,12 +504,13 @@ function render(rec, ver, trades) {
     <div class="card stock-card">
       <div class="card-header">
         <div>
-          <div class="card-title">🎯 主推标的</div>
+          <div class="card-title">🎯 主力策略 · 缩量回MA20</div>
           <div class="stock-code">${sMain.code || '--'}</div>
         </div>
         <div class="card-badge">评分 ${sMain.score || '--'}</div>
       </div>
       <div class="stock-name">${sMain.name || '--'}</div>
+      <div class="stock-strategy">${sMain.strategy || '缩量回MA20'}</div>
       <div class="stock-metrics">
         <div class="metric">
           <div class="val">${sMain.deviation != null ? sMain.deviation.toFixed(1) + '%' : '--'}</div>
@@ -470,7 +536,7 @@ function render(rec, ver, trades) {
     <div class="card stock-card">
       <div class="card-header">
         <div>
-          <div class="card-title">📋 备选标的</div>
+          <div class="card-title">📋 备选 · 缩量回MA20</div>
           <div class="stock-code">${sBackup.code || '--'}</div>
         </div>
         <div class="card-badge">评分 ${sBackup.score || '--'}</div>
@@ -500,7 +566,7 @@ function render(rec, ver, trades) {
     <div class="card stock-card ${!rec.barry_valid ? 'barry-invalid' : ''}">
       <div class="card-header">
         <div>
-          <div class="card-title">📊 参考标的</div>
+          <div class="card-title">📊 BARRY 策略 · 参考</div>
           <div class="stock-code">${sBarry.code || '--'}</div>
         </div>
         ${!rec.barry_valid ? '<span class="invalid-tag">⚠️ RSI超买 不推荐</span>' : ''}
@@ -571,9 +637,7 @@ function render(rec, ver, trades) {
     <div class="card">
       <div class="card-header">
         <div class="card-title">📜 历史交易</div>
-        <div class="card-badge" style="color:${totalReturn >= 0 ? 'var(--red)' : 'var(--green)'};font-weight:700">
-          累计 ${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(1)}%
-        </div>
+        <div class="card-badge">${doneTrades.length}笔已结算</div>
       </div>
       <div class="stats-row">
         <div class="stat-card">
@@ -585,38 +649,37 @@ function render(rec, ver, trades) {
           <div class="lbl">累计收益</div>
         </div>
         <div class="stat-card">
-          <div class="val">${trades.slice(0,10).length}</div>
-          <div class="lbl">近10笔</div>
+          <div class="val">${trades.length}</div>
+          <div class="lbl">总推荐</div>
         </div>
       </div>
       <table class="trade-table">
         <tr>
-          <th>日期</th>
+          <th>信号日</th>
           <th>标的</th>
-          <th>买入</th>
-          <th>现价</th>
+          <th>买入价</th>
+          <th>状态</th>
         </tr>
-        ${trades.slice(0, 10).map(function(t) {
-          var price = t.sell_price || t.current_price;
-          var pct = price ? ((price / t.buy_price - 1) * 100) : null;
-          var up = pct != null && pct > 0;
-          var down = pct != null && pct < 0;
-          var arrow = up ? ' 🔺' : down ? ' 🔻' : '';
-          var pCls = up ? 'trade-up' : down ? 'trade-down' : '';
-          var completed = t.sell_price != null;
-          return '<tr>' +
-            '<td>' + (t.signal_date || '--') + '</td>' +
-            '<td><strong>' + (t.main_name || '--') + '</strong><br><span style="font-size:10px;color:var(--text-dim)">' + (t.main_code || '') + '</span></td>' +
-            '<td>¥' + (t.buy_price || '--') + '</td>' +
-            '<td class="' + pCls + '">' + (price ? '¥' + price + arrow : '--') + (pct != null ? '<br><span style="font-size:10px">' + (pct>0?'+':'') + pct.toFixed(1) + '%' + (completed?' 已结算':'') + '</span>' : '') + '</td>' +
-            '</tr>';
-        }).join('')}
+        ${trades.slice().reverse().slice(0, 10).map(t => `
+        <tr>
+          <td>${t.signal_date || '--'}</td>
+          <td><strong>${t.main_name || '--'}</strong><br><span style="font-size:10px;color:var(--text-dim)">${t.main_code || ''}</span></td>
+          <td>¥${t.buy_price || '--'}</td>
+          <td>
+            ${t.result === 'win' ? '<span class="trade-status status-win">✅ 盈利</span>' :
+              t.result === 'loss' ? '<span class="trade-status status-loss">❌ 亏损</span>' :
+              '<span class="trade-status status-pending">⏳ 持仓中</span>'}
+            ${t.return_pct != null ? `<br><span style="font-size:10px" class="${t.return_pct > 0 ? 'trade-up' : 'trade-down'}">${t.return_pct > 0 ? '+' : ''}${t.return_pct.toFixed(1)}%</span>` : ''}
+          </td>
+        </tr>
+        `).join('')}
       </table>
     </div>
   `;
 }
 
 loadData();
+startAutoRefresh();
 
 // Password gate
 (function() {
