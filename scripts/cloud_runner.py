@@ -14,20 +14,36 @@ def bj_now(): return dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
 WORKSPACE = os.path.dirname(os.path.abspath(__file__))
 
 def _find_root():
-    """向上搜索定位仓库根目录（不依赖 cloud_runner.py 相对根的层级深度）。
-    优先找 .git（checkout 必带），其次找含 dashboard/ 的目录。"""
-    # 1) 找 .git
+    """向上搜索定位项目根目录。
+
+    项目根判定优先级：
+      1) 含 run_before_recommend.py（本地：外层任务根；CI 回退用 .git）
+      2) 含 .git（GitHub Actions checkout 必带）
+      3) 含 dashboard/ 的目录（兜底）
+    这样本地 WS_ROOT 指向外层任务根（与 run_before_recommend.py 读取的
+    latest_recommendation.json 同目录），CI 下指向仓库根，二者一致。
+    """
+    # 1) run_before_recommend.py（统一入口所在目录 = 项目根）
     cur = WORKSPACE
-    for _ in range(6):
+    for _ in range(8):
+        if os.path.exists(os.path.join(cur, 'run_before_recommend.py')):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    # 2) .git
+    cur = WORKSPACE
+    for _ in range(8):
         if os.path.isdir(os.path.join(cur, '.git')):
             return cur
         parent = os.path.dirname(cur)
         if parent == cur:
             break
         cur = parent
-    # 2) 兜底：找含 dashboard/ 的目录
+    # 3) 兜底：含 dashboard/ 的目录
     cur = WORKSPACE
-    for _ in range(6):
+    for _ in range(8):
         if os.path.isdir(os.path.join(cur, 'dashboard')):
             return cur
         parent = os.path.dirname(cur)
@@ -53,6 +69,15 @@ def _load_cache():
         cp = os.path.join(WS_ROOT, 'backtest', 'cache', 'backtest_data.pkl')
         with open(cp, 'rb') as f:
             _CACHE_SD = pickle.load(f)['stock_data']
+        # 记录缓存最新日期，供新鲜度判定
+        global _CACHE_MAX_DATE, _KL_LATEST
+        mx = 0
+        for _c, _sd in _CACHE_SD.items():
+            _ds = (_sd or {}).get('dates', [])
+            if _ds:
+                mx = max(mx, _date_to_int(_ds[-1]))
+        _CACHE_MAX_DATE = mx
+        _KL_LATEST = max(_KL_LATEST, mx)
     except: _CACHE_SD = {}
 
 def get_pool():
@@ -67,8 +92,20 @@ def get_pool():
 # 在线抓取缓存（供末尾写回 backtest_data.pkl，实现"回测永远最新"）
 _FRESH = {}
 
+# 数据新鲜度追踪：记录本次运行可用的 K 线最新日期（int YYYYMMDD），用于
+# 诚实标记 signal_date 与 kline_latest 是否一致，避免静默使用陈旧缓存。
+_KL_LATEST = 0
+_CACHE_MAX_DATE = 0
+
+def _date_to_int(d):
+    try:
+        return int(str(d).replace('-', '').replace('/', '')[:8])
+    except:
+        return 0
+
 def _capture_fresh(code, dates, opens, highs, lows, closes, volumes):
     """记录本次在线抓到的OHLCV，供末尾写回 backtest_data.pkl（追加新日期，保留旧历史）"""
+    global _KL_LATEST
     try:
         _FRESH[code] = {
             'dates': [str(d).replace('-', '') for d in dates],
@@ -78,8 +115,14 @@ def _capture_fresh(code, dates, opens, highs, lows, closes, volumes):
             'closes': np.asarray(closes, dtype=float),
             'volumes': np.asarray(volumes, dtype=float),
         }
+        if dates:
+            _KL_LATEST = max(_KL_LATEST, _date_to_int(dates[-1]))
     except:
         pass
+
+def kl_latest_date():
+    """本次运行可用的 K 线最新日期（int YYYYMMDD），取在线与缓存的较大值。"""
+    return max(_KL_LATEST, _CACHE_MAX_DATE)
 
 # ── Yahoo 批量预拉（云端数据源：GitHub Actions 海外节点可连）──
 _YH = {}  # code -> {'dates':[], 'opens':arr,'highs':arr,'lows':arr,'closes':arr,'volumes':arr}
@@ -578,10 +621,13 @@ def _fallback_html():
 // 最后更新: 1970-01-01 00:00:00
 </body></html>'''
 
-def gen(cands, barry_cands, mkt, ss, ts, bd, sd, nd=None):
+def gen(cands, barry_cands, mkt, ss, ts, bd, sd, nd=None, data_stale=False, kline_latest=0):
     print("[5/5] 生成...")
     # 调试：打印关键路径，便于 CI 定位模板缺失问题
     print(f"  [debug] WS_ROOT={WS_ROOT} | cwd={os.getcwd()} | WORKSPACE={WORKSPACE}")
+    # 真实 K 线最新日期（int YYYYMMDD → str YYYY-MM-DD），与 signal_date 比对
+    kl_str = f"{kline_latest:08d}"[:4] + '-' + f"{kline_latest:08d}"[4:6] + '-' + f"{kline_latest:08d}"[6:8] if kline_latest else ts
+    signal_is_latest = (kline_latest > 0) and (kline_latest >= _date_to_int(ts))
     # 模板多候选路径探测（CI 工作区路径可能与本地不同）
     tp_cands = [
         os.path.join(WS_ROOT, 'dashboard', 'index.html'),
@@ -608,7 +654,8 @@ def gen(cands, barry_cands, mkt, ss, ts, bd, sd, nd=None):
     bc = barry_cands[0] if barry_cands else {}
     barry_valid = bool(barry_cands) and bc.get('rsi', 0) < 65
 
-    rec = {'signal_date':ts,'buy_date':bd,'sell_date':sd,'kline_latest':ts,
+    rec = {'signal_date':ts,'buy_date':bd,'sell_date':sd,'kline_latest':kl_str,
+           'data_stale':data_stale,
            'sh_index_pct':mkt.get('sh_index_pct',0),
            'generated_at':bj_now().strftime('%Y-%m-%d %H:%M:%S'),'complete':True,
            'main':mn,'main_backup':bk,
@@ -628,12 +675,12 @@ def gen(cands, barry_cands, mkt, ss, ts, bd, sd, nd=None):
                'has_main':len(cands)>0,'has_sh_index_pct':True,'main_code':bool(mn.get('code')),
                'main_price':bool(mn.get('price')),'main_stop_loss':bool(mn.get('stop_loss')),
                'main_name':bool(mn.get('name')),'main_rsi':bool(mn.get('rsi')),
-               'signal_is_kline_latest':True,'download_ratio':'N/A',
-               'barry_valid':barry_valid,'barry_rsi':bc.get('rsi',0),'candidate_count':len(cands)},'issues':[],'passed':True},
+               'signal_is_kline_latest':signal_is_latest,'download_ratio':'N/A',
+               'barry_valid':barry_valid,'barry_rsi':bc.get('rsi',0),'candidate_count':len(cands)},'issues':([f'数据滞后: K线最新{kl_str} < 信号日{ts}'] if data_stale else []),'passed':(len(cands)>0 and not data_stale)},
            'news_filter':nd if nd else {'filtered_count':0,'replaced':False,'replacement':'',
                'detail':{'filtered_out':[],'passed':[],'scan_time':'','total_checked':len(cands),'total_red':0,'total_passed':len(cands)}},
            'signal_strength':ss,'market_state':mkt,
-           'checklist':{'K线最新日期=信号日':True,'脚本完成标记':True,'JSON数据完整':True,
+           'checklist':{'K线最新日期=信号日':signal_is_latest,'脚本完成标记':True,'JSON数据完整':True,
                '新闻过滤通过':True,'主推RSI正常(<75)':True,'BARRY未超买(RSI<65)':True,
                '信号强度':ss.get('level','?'),'MA60市场状态':mkt.get('label','?')}}
 
@@ -904,7 +951,17 @@ def main():
         for b in barry:
             print(f"    {b['code']} {b['name']} ${b['price']} 涨幅{b['pct_chg']:.1f}% RSI{b['rsi']} 量比{b['volume_ratio']}")
     print(f"\n  过滤: {candidates_before}→{len(cands)}只\n  市场: {mkt['label']}\n  信号: {ss['level']}")
-    gen(cands, barry, mkt, ss, ts, ts, sell, nd)
+
+    # 数据新鲜度判定：本次可用的 K 线最新日期是否达到信号日
+    actual = kl_latest_date()
+    ts_i = _date_to_int(ts)
+    data_stale = actual > 0 and actual < ts_i
+    if data_stale:
+        print(f"⚠️ 数据滞后：可用 K 线最新 {actual:08d}，信号日 {ts}（缓存/在线未覆盖最新交易日，已用可得数据）")
+    else:
+        print(f"  [数据] K线最新日期: {actual:08d} | 信号日: {ts}")
+
+    gen(cands, barry, mkt, ss, ts, ts, sell, nd, data_stale=data_stale, kline_latest=actual)
     # [6/5] 刷新回测缓存：把本次在线抓到的K线写回 backtest_data.pkl
     print("\n[6/5] 刷新回测缓存...")
     update_backtest_cache()
